@@ -3,16 +3,16 @@ import Outline from '@/components/publish/outline/Outline';
 import { Divider, PopperPlacementType } from '@mui/material';
 import React, { ReactElement, useMemo } from 'react';
 import { RichTooltip } from '@/components/_shared/popover';
-import { ReactComponent as Logo } from '@/assets/logo.svg';
-import { ReactComponent as AppflowyLogo } from '@/assets/appflowy.svg';
+import { ReactComponent as AppFlowyLogo } from '@/assets/appflowy.svg';
 
-export function OutlinePopover({
+export function OutlinePopover ({
   children,
   open,
   onClose,
   placement,
   onMouseEnter,
   onMouseLeave,
+  drawerWidth,
 }: {
   open: boolean;
   onClose: () => void;
@@ -20,6 +20,7 @@ export function OutlinePopover({
   placement?: PopperPlacementType;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  drawerWidth: number;
 }) {
   const viewMeta = usePublishContext()?.viewMeta;
 
@@ -28,9 +29,11 @@ export function OutlinePopover({
       <div
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className={'flex h-fit max-h-[500px] w-[268px] flex-col overflow-y-auto overflow-x-hidden p-2'}
+
+        className={'flex h-fit max-h-[500px] flex-col overflow-y-auto overflow-x-hidden pb-2'}
       >
-        <Outline width={268} viewMeta={viewMeta} />
+        <Outline width={drawerWidth} />
+
         <div
           style={{
             position: 'sticky',
@@ -46,18 +49,23 @@ export function OutlinePopover({
             onClick={() => {
               window.open('https://appflowy.io', '_blank');
             }}
-            className={'flex w-full cursor-pointer items-center justify-center text-sm text-text-title opacity-50'}
+            className={
+              'flex w-full cursor-pointer gap-2 items-center justify-center py-2 text-sm text-text-title opacity-50'
+            }
           >
-            <Logo className={'h-4 w-4'} />
-            <AppflowyLogo className={'w-20'} />
+            Powered by
+            <AppFlowyLogo className={'w-[88px]'} />
           </div>
         </div>
       </div>
     );
-  }, [onMouseEnter, onMouseLeave, viewMeta]);
+  }, [onMouseEnter, onMouseLeave, viewMeta, drawerWidth]);
 
   return (
-    <RichTooltip open={open} onClose={onClose} content={content} placement={placement}>
+    <RichTooltip PaperProps={{
+      className: 'rounded-[14px] border border-tint-purple bg-bg-body m-2 overflow-hidden',
+    }} open={open} onClose={onClose} content={content} placement={placement}
+    >
       {children}
     </RichTooltip>
   );

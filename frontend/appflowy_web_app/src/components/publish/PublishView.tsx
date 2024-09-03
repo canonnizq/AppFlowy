@@ -42,12 +42,18 @@ export function PublishView ({ namespace, publishName }: PublishViewProps) {
     void openPublishView();
   }, [openPublishView]);
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    return localStorage.getItem('publish_outline_open') === 'true';
+  });
 
   const [search] = useSearchParams();
 
   const isTemplate = search.get('template') === 'true';
   const isTemplateThumb = isTemplate && search.get('thumbnail') === 'true';
+
+  useEffect(() => {
+    localStorage.setItem('publish_outline_open', open ? 'true' : 'false');
+  }, [open]);
 
   useEffect(() => {
     if (!isTemplateThumb) return;
@@ -82,6 +88,10 @@ export function PublishView ({ namespace, publishName }: PublishViewProps) {
           {!isTemplate && <PublishViewHeader
             onOpenDrawer={() => {
               setOpen(true);
+            }}
+            drawerWidth={drawerWidth}
+            onCloseDrawer={() => {
+              setOpen(false);
             }}
             openDrawer={open}
           />}
