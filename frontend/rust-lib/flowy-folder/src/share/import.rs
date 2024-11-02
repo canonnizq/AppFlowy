@@ -4,8 +4,9 @@ use collab_folder::ViewLayout;
 pub enum ImportType {
   HistoryDocument = 0,
   HistoryDatabase = 1,
-  RawDatabase = 2,
-  CSV = 3,
+  Markdown = 2,
+  AFDatabase = 3,
+  CSV = 4,
 }
 
 #[derive(Clone, Debug)]
@@ -21,5 +22,4 @@ pub struct ImportValue {
 pub struct ImportParams {
   pub parent_view_id: String,
   pub values: Vec<ImportValue>,
-  pub sync_after_create: bool,
 }

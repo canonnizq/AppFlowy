@@ -3,7 +3,7 @@ import { useRenderFields, GridHeader, GridTable } from '@/components/database/co
 import { CircularProgress } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 
-export function Grid() {
+export function Grid () {
   const database = useDatabase();
   const viewId = useViewId() || '';
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -24,7 +24,12 @@ export function Grid() {
 
   return (
     <div className={'database-grid flex w-full flex-1 flex-col'}>
-      <GridHeader scrollLeft={scrollLeft} columnWidth={columnWidth} columns={fields} onScrollLeft={setScrollLeft} />
+      <GridHeader
+        scrollLeft={scrollLeft}
+        columnWidth={columnWidth}
+        columns={fields}
+        onScrollLeft={setScrollLeft}
+      />
       <div className={'grid-scroll-table w-full flex-1'}>
         <GridTable
           viewId={viewId}

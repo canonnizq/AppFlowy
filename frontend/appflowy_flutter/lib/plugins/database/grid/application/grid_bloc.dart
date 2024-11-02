@@ -2,13 +2,15 @@ import 'dart:async';
 
 import 'package:appflowy/plugins/database/application/defines.dart';
 import 'package:appflowy/plugins/database/application/field/field_info.dart';
+import 'package:appflowy/plugins/database/application/field/filter_entities.dart';
+import 'package:appflowy/plugins/database/application/field/sort_entities.dart';
 import 'package:appflowy/plugins/database/application/row/row_cache.dart';
 import 'package:appflowy/plugins/database/application/row/row_service.dart';
-import 'package:appflowy/plugins/database/grid/presentation/widgets/filter/filter_info.dart';
-import 'package:appflowy/plugins/database/grid/presentation/widgets/sort/sort_info.dart';
+import 'package:appflowy_backend/dispatch/dispatch.dart';
 import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-database2/protobuf.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
+import 'package:appflowy_backend/protobuf/flowy-user/user_profile.pb.dart';
 import 'package:appflowy_result/appflowy_result.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -27,13 +29,30 @@ class GridBloc extends Bloc<GridEvent, GridState> {
 
   String get viewId => databaseController.viewId;
 
+  UserProfilePB? _userProfile;
+  UserProfilePB? get userProfile => _userProfile;
+
   void _dispatch() {
     on<GridEvent>(
       (event, emit) async {
         await event.when(
           initial: () async {
+            final response = await UserEventGetUserProfile().send();
+            response.fold(
+              (userProfile) => _userProfile = userProfile,
+              (err) => Log.error(err),
+            );
+
             _startListening();
             await _openGrid(emit);
+          },
+          openRowDetail: (row) {
+            emit(
+              state.copyWith(
+                createdRow: row,
+                openRowDetail: true,
+              ),
+            );
           },
           createRow: (openRowDetail) async {
             final result = await RowBackendService.createRow(viewId: viewId);
@@ -64,9 +83,6 @@ class GridBloc extends Bloc<GridEvent, GridState> {
 
             databaseController.moveRow(fromRowId: fromRow, toRowId: toRow);
           },
-          didReceiveGridUpdate: (grid) {
-            emit(state.copyWith(grid: grid));
-          },
           didReceiveFieldUpdate: (fields) {
             emit(
               state.copyWith(
@@ -83,12 +99,12 @@ class GridBloc extends Bloc<GridEvent, GridState> {
               ),
             );
           },
-          didReceveFilters: (List<FilterInfo> filters) {
+          didReceveFilters: (filters) {
             emit(
               state.copyWith(filters: filters),
             );
           },
-          didReceveSorts: (List<SortInfo> sorts) {
+          didReceveSorts: (sorts) {
             emit(
               state.copyWith(
                 reorderable: sorts.isEmpty,
@@ -101,21 +117,24 @@ class GridBloc extends Bloc<GridEvent, GridState> {
     );
   }
 
-  RowCache getRowCache(RowId rowId) => databaseController.rowCache;
+  RowCache get rowCache => databaseController.rowCache;
 
   void _startListening() {
     final onDatabaseChanged = DatabaseCallbacks(
-      onDatabaseChanged: (database) {
-        if (!isClosed) {
-          add(GridEvent.didReceiveGridUpdate(database));
-        }
-      },
       onNumOfRowsChanged: (rowInfos, _, reason) {
         if (!isClosed) {
           add(GridEvent.didLoadRows(rowInfos, reason));
         }
       },
+      onRowsCreated: (rows) {
+        for (final row in rows) {
+          if (!isClosed && row.isHiddenInView) {
+            add(GridEvent.openRowDetail(row.rowMeta));
+          }
+        }
+      },
       onRowsUpdated: (rows, reason) {
+        // TODO(nathan): separate different reasons
         if (!isClosed) {
           add(
             GridEvent.didLoadRows(databaseController.rowCache.rowInfos, reason),
@@ -164,6 +183,7 @@ class GridBloc extends Bloc<GridEvent, GridState> {
 @freezed
 class GridEvent with _$GridEvent {
   const factory GridEvent.initial() = InitialGrid;
+  const factory GridEvent.openRowDetail(RowMetaPB row) = _OpenRowDetail;
   const factory GridEvent.createRow({bool? openRowDetail}) = _CreateRow;
   const factory GridEvent.resetCreatedRow() = _ResetCreatedRow;
   const factory GridEvent.deleteRow(RowInfo rowInfo) = _DeleteRow;
@@ -176,13 +196,9 @@ class GridEvent with _$GridEvent {
     List<FieldInfo> fields,
   ) = _DidReceiveFieldUpdate;
 
-  const factory GridEvent.didReceiveGridUpdate(
-    DatabasePB grid,
-  ) = _DidReceiveGridUpdate;
-
-  const factory GridEvent.didReceveFilters(List<FilterInfo> filters) =
+  const factory GridEvent.didReceveFilters(List<DatabaseFilter> filters) =
       _DidReceiveFilters;
-  const factory GridEvent.didReceveSorts(List<SortInfo> sorts) =
+  const factory GridEvent.didReceveSorts(List<DatabaseSort> sorts) =
       _DidReceiveSorts;
 }
 
@@ -190,7 +206,6 @@ class GridEvent with _$GridEvent {
 class GridState with _$GridState {
   const factory GridState({
     required String viewId,
-    required DatabasePB? grid,
     required List<FieldInfo> fields,
     required List<RowInfo> rowInfos,
     required int rowCount,
@@ -198,8 +213,8 @@ class GridState with _$GridState {
     required LoadingState loadingState,
     required bool reorderable,
     required ChangedReason reason,
-    required List<SortInfo> sorts,
-    required List<FilterInfo> filters,
+    required List<DatabaseSort> sorts,
+    required List<DatabaseFilter> filters,
     required bool openRowDetail,
   }) = _GridState;
 
@@ -208,7 +223,6 @@ class GridState with _$GridState {
         rowInfos: [],
         rowCount: 0,
         createdRow: null,
-        grid: null,
         viewId: viewId,
         reorderable: true,
         loadingState: const LoadingState.loading(),

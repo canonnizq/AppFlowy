@@ -1,8 +1,7 @@
-use collab_database::{fields::Field, rows::Cell};
-
 use crate::entities::{CheckboxCellDataPB, CheckboxFilterConditionPB, CheckboxFilterPB};
 use crate::services::cell::insert_checkbox_cell;
 use crate::services::filter::PreFillCellsWithFilter;
+use collab_database::{fields::Field, rows::Cell};
 
 impl CheckboxFilterPB {
   pub fn is_visible(&self, cell_data: &CheckboxCellDataPB) -> bool {
@@ -14,16 +13,13 @@ impl CheckboxFilterPB {
 }
 
 impl PreFillCellsWithFilter for CheckboxFilterPB {
-  fn get_compliant_cell(&self, field: &Field) -> (Option<Cell>, bool) {
+  fn get_compliant_cell(&self, field: &Field) -> Option<Cell> {
     let is_checked = match self.condition {
       CheckboxFilterConditionPB::IsChecked => Some(true),
       CheckboxFilterConditionPB::IsUnChecked => None,
     };
 
-    (
-      is_checked.map(|is_checked| insert_checkbox_cell(is_checked, field)),
-      false,
-    )
+    is_checked.map(|is_checked| insert_checkbox_cell(is_checked, field))
   }
 }
 

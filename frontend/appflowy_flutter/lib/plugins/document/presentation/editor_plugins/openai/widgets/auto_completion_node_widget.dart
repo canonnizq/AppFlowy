@@ -15,6 +15,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 import 'ai_limit_dialog.dart';
 
@@ -74,11 +75,10 @@ class AutoCompletionBlockComponentBuilder extends BlockComponentBuilder {
   }
 
   @override
-  bool validate(Node node) {
-    return node.children.isEmpty &&
-        node.attributes[AutoCompletionBlockKeys.prompt] is String &&
-        node.attributes[AutoCompletionBlockKeys.startSelection] is Map;
-  }
+  BlockComponentValidate get validate => (node) =>
+      node.children.isEmpty &&
+      node.attributes[AutoCompletionBlockKeys.prompt] is String &&
+      node.attributes[AutoCompletionBlockKeys.startSelection] is Map;
 }
 
 class AutoCompletionBlockComponent extends BlockComponentStatefulWidget {
@@ -137,10 +137,10 @@ class _AutoCompletionBlockComponentState
 
   @override
   Widget build(BuildContext context) {
-    if (PlatformExtension.isMobile) {
+    if (UniversalPlatform.isMobile) {
       return const SizedBox.shrink();
     }
-    
+
     final child = Card(
       elevation: 5,
       shape: RoundedRectangleBorder(

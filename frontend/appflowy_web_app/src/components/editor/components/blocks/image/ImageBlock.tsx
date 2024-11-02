@@ -1,4 +1,4 @@
-import { AlignType } from '@/application/collab.type';
+import { AlignType } from '@/application/types';
 import { EditorElementProps, ImageBlockNode } from '@/components/editor/editor.type';
 import React, { forwardRef, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { ReactEditor, useSelected, useSlateStatic } from 'slate-react';
@@ -6,7 +6,12 @@ import ImageEmpty from './ImageEmpty';
 import ImageRender from './ImageRender';
 
 export const ImageBlock = memo(
-  forwardRef<HTMLDivElement, EditorElementProps<ImageBlockNode>>(({ node, children, className, ...attributes }, ref) => {
+  forwardRef<HTMLDivElement, EditorElementProps<ImageBlockNode>>(({
+    node,
+    children,
+    className,
+    ...attributes
+  }, ref) => {
     const selected = useSelected();
     const { url, align } = useMemo(() => node.data || {}, [node.data]);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -29,6 +34,7 @@ export const ImageBlock = memo(
       <div
         {...attributes}
         ref={containerRef}
+        contentEditable={false}
         onMouseEnter={() => {
           if (!url) return;
           setShowToolbar(true);
@@ -36,19 +42,33 @@ export const ImageBlock = memo(
         onMouseLeave={() => setShowToolbar(false)}
         className={`${className || ''} image-block relative w-full cursor-default`}
       >
-        <div ref={ref} className={'absolute left-0 top-0 h-full w-full select-none caret-transparent'}>
+        <div
+          ref={ref}
+          className={'absolute left-0 top-0 h-full w-full select-none caret-transparent'}
+        >
           {children}
         </div>
-        <div contentEditable={false} className={`flex w-full select-none ${url ? '' : 'rounded border'} ${alignCss}`}>
+        <div
+          contentEditable={false}
+          className={`flex w-full select-none overflow-hidden ${url ? '' : 'rounded-[8px] border border-line-divider'} ${alignCss}`}
+        >
           {url ? (
-            <ImageRender showToolbar={showToolbar} selected={selected} node={node} />
+            <ImageRender
+              showToolbar={showToolbar}
+              selected={selected}
+              node={node}
+            />
           ) : (
-            <ImageEmpty node={node} onEscape={onFocusNode} containerRef={containerRef} />
+            <ImageEmpty
+              node={node}
+              onEscape={onFocusNode}
+              containerRef={containerRef}
+            />
           )}
         </div>
       </div>
     );
-  })
+  }),
 );
 
 export default ImageBlock;

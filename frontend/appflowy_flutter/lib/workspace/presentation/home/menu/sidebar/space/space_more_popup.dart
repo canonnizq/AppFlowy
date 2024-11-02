@@ -1,13 +1,14 @@
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/shared/af_role_pb_extension.dart';
 import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
 import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/workspace/application/sidebar/space/space_bloc.dart';
+import 'package:appflowy/workspace/application/user/user_workspace_bloc.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/space_action_type.dart';
 import 'package:appflowy/workspace/presentation/widgets/pop_up_action.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/user_profile.pb.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
@@ -19,11 +20,13 @@ class SpaceMorePopup extends StatelessWidget {
     required this.space,
     required this.onAction,
     required this.onEditing,
+    this.isHovered = false,
   });
 
   final ViewPB space;
   final void Function(SpaceMoreActionType type, dynamic data) onAction;
   final void Function(bool value) onEditing;
+  final bool isHovered;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +41,10 @@ class SpaceMorePopup extends StatelessWidget {
       buildChild: (popover) {
         return FlowyIconButton(
           width: 24,
-          icon: const FlowySvg(FlowySvgs.workspace_three_dots_s),
+          icon: FlowySvg(
+            FlowySvgs.workspace_three_dots_s,
+            color: isHovered ? Theme.of(context).colorScheme.onSurface : null,
+          ),
           tooltipText: LocaleKeys.space_manage.tr(),
           onPressed: () {
             onEditing(true);
@@ -85,7 +91,11 @@ class SpaceMoreActionTypeWrapper extends CustomActionCell {
   final void Function(PopoverController controller, dynamic data) onTap;
 
   @override
-  Widget buildWithContext(BuildContext context, PopoverController controller) {
+  Widget buildWithContext(
+    BuildContext context,
+    PopoverController controller,
+    PopoverMutex? mutex,
+  ) {
     if (inner == SpaceMoreActionType.divider) {
       return _buildDivider();
     } else if (inner == SpaceMoreActionType.changeIcon) {
@@ -139,13 +149,24 @@ class SpaceMoreActionTypeWrapper extends CustomActionCell {
     final spaces = spaceBloc.state.spaces;
     final currentSpace = spaceBloc.state.currentSpace;
 
+    final isOwner = context
+            .read<UserWorkspaceBloc?>()
+            ?.state
+            .currentWorkspaceMember
+            ?.role
+            .isOwner ??
+        false;
+    final isPageCreator =
+        currentSpace?.createdBy == context.read<UserProfilePB>().id;
+    final allowToDelete = isOwner || isPageCreator;
+
     bool disable = false;
     var message = '';
     if (inner == SpaceMoreActionType.delete) {
       if (spaces.length <= 1) {
         disable = true;
         message = LocaleKeys.space_unableToDeleteLastSpace.tr();
-      } else if (currentSpace?.createdBy != context.read<UserProfilePB>().id) {
+      } else if (!allowToDelete) {
         disable = true;
         message = LocaleKeys.space_unableToDeleteSpaceNotCreatedByYou.tr();
       }

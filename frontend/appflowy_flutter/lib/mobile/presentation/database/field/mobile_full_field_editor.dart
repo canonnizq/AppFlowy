@@ -35,6 +35,7 @@ class FieldOptionValues {
   FieldOptionValues({
     required this.type,
     required this.name,
+    required this.icon,
     this.dateFormat,
     this.timeFormat,
     this.includeTime,
@@ -48,6 +49,7 @@ class FieldOptionValues {
     return FieldOptionValues(
       type: fieldType,
       name: field.name,
+      icon: field.icon,
       numberFormat: fieldType == FieldType.Number
           ? NumberTypeOptionPB.fromBuffer(buffer).format
           : null,
@@ -83,6 +85,7 @@ class FieldOptionValues {
 
   FieldType type;
   String name;
+  String icon;
 
   // FieldType.DateTime
   // FieldType.LastEditedTime
@@ -147,6 +150,8 @@ class FieldOptionValues {
           timeFormat: timeFormat,
           includeTime: includeTime,
         ).writeToBuffer();
+      case FieldType.Media:
+        return MediaTypeOptionPB().writeToBuffer();
       default:
         throw UnimplementedError();
     }
@@ -219,7 +224,8 @@ class _MobileFieldEditorState extends State<MobileFieldEditor> {
             const _Divider(),
             OptionTextField(
               controller: controller,
-              type: values.type,
+              fieldType: values.type,
+              isPrimary: widget.isPrimary,
               onTextChanged: (value) {
                 isFieldNameChanged = true;
                 _updateOptionValues(name: value);

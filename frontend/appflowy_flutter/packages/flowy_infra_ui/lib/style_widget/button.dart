@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flowy_infra/size.dart';
 import 'package:flowy_infra_ui/style_widget/hover.dart';
-import 'package:flowy_infra_ui/style_widget/text.dart';
 import 'package:flowy_infra_ui/widget/flowy_tooltip.dart';
 import 'package:flowy_infra_ui/widget/ignore_parent_gesture.dart';
 import 'package:flowy_infra_ui/widget/spacing.dart';
@@ -142,7 +141,7 @@ class FlowyButton extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onSecondaryTap;
   final void Function(bool)? onHover;
-  final EdgeInsets? margin;
+  final EdgeInsetsGeometry? margin;
   final Widget? leftIcon;
   final Widget? rightIcon;
   final Color? hoverColor;
@@ -160,6 +159,7 @@ class FlowyButton extends StatelessWidget {
   final bool expand;
   final Color? borderColor;
   final Color? backgroundColor;
+  final bool resetHoverOnRebuild;
 
   const FlowyButton({
     super.key,
@@ -185,6 +185,7 @@ class FlowyButton extends StatelessWidget {
     this.expand = false,
     this.borderColor,
     this.backgroundColor,
+    this.resetHoverOnRebuild = true,
   });
 
   @override
@@ -207,6 +208,7 @@ class FlowyButton extends StatelessWidget {
       onTap: disable ? null : onTap,
       onSecondaryTap: disable ? null : onSecondaryTap,
       child: FlowyHover(
+        resetHoverOnRebuild: resetHoverOnRebuild,
         cursor:
             disable ? SystemMouseCursors.forbidden : SystemMouseCursors.click,
         style: HoverStyle(
@@ -386,13 +388,10 @@ class FlowyTextButton extends StatelessWidget {
       children.add(heading!);
       children.add(const HSpace(8));
     }
-    children.add(FlowyText(
+    children.add(Text(
       text,
       overflow: overflow,
-      color: fontColor ?? Theme.of(context).colorScheme.onPrimary,
       textAlign: TextAlign.center,
-      lineHeight: lineHeight,
-      fontSize: fontSize,
     ));
 
     Widget child = Row(
@@ -424,13 +423,14 @@ class FlowyTextButton extends StatelessWidget {
             ),
           ),
           textStyle: WidgetStateProperty.all(
-            TextStyle(
-              fontWeight: fontWeight ?? FontWeight.w500,
-              fontSize: fontSize,
-              decoration: decoration,
-              fontFamily: fontFamily,
-              height: lineHeight ?? 1.1,
-            ),
+            Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: fontWeight ?? FontWeight.w500,
+                  fontSize: fontSize,
+                  color: fontColor ?? Theme.of(context).colorScheme.onPrimary,
+                  decoration: decoration,
+                  fontFamily: fontFamily,
+                  height: lineHeight ?? 1.1,
+                ),
           ),
           backgroundColor: WidgetStateProperty.resolveWith(
             (states) {
@@ -527,7 +527,6 @@ class FlowyRichTextButton extends StatelessWidget {
     );
 
     child = RawMaterialButton(
-      visualDensity: VisualDensity.compact,
       hoverElevation: 0,
       highlightElevation: 0,
       shape: RoundedRectangleBorder(borderRadius: radius ?? Corners.s6Border),

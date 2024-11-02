@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 class MathEquationBlockKeys {
   const MathEquationBlockKeys._();
@@ -81,7 +82,7 @@ class MathEquationBlockComponentBuilder extends BlockComponentBuilder {
   }
 
   @override
-  bool validate(Node node) =>
+  BlockComponentValidate get validate => (node) =>
       node.children.isEmpty &&
       node.attributes[MathEquationBlockKeys.formula] is String;
 }
@@ -156,7 +157,7 @@ class MathEquationBlockComponentWidgetState
       );
     }
 
-    if (PlatformExtension.isMobile) {
+    if (UniversalPlatform.isMobile) {
       child = MobileBlockActionButtons(
         node: node,
         editorState: editorState,
@@ -173,12 +174,16 @@ class MathEquationBlockComponentWidgetState
       child: Row(
         children: [
           const HSpace(10),
-          FlowySvg(FlowySvgs.slash_menu_icon_math_equation_s,
-              color: Theme.of(context).hintColor, size: const Size.square(24),),
+          FlowySvg(
+            FlowySvgs.slash_menu_icon_math_equation_s,
+            color: Theme.of(context).hintColor,
+            size: const Size.square(24),
+          ),
           const HSpace(10),
           FlowyText(
-              LocaleKeys.document_plugins_mathEquation_addMathEquation.tr(),
-              color: Theme.of(context).hintColor,),
+            LocaleKeys.document_plugins_mathEquation_addMathEquation.tr(),
+            color: Theme.of(context).hintColor,
+          ),
         ],
       ),
     );

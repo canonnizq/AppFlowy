@@ -4,12 +4,12 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/base/strin
 import 'package:appflowy/plugins/document/presentation/editor_plugins/code_block/code_language_screen.dart';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:appflowy_editor_plugins/appflowy_editor_plugins.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 CodeBlockLanguagePickerBuilder codeBlockLanguagePickerBuilder = (
   editorState,
@@ -75,7 +75,7 @@ class _CodeBlockLanguageSelectorState
             fillColor: Colors.transparent,
             hoverColor: Theme.of(context).colorScheme.secondaryContainer,
             onPressed: () async {
-              if (PlatformExtension.isMobile) {
+              if (UniversalPlatform.isMobile) {
                 final language = await context
                     .push<String>(MobileCodeLanguagePickerScreen.routeName);
                 if (language != null) {
@@ -88,7 +88,7 @@ class _CodeBlockLanguageSelectorState
       ],
     );
 
-    if (PlatformExtension.isDesktopOrWeb) {
+    if (UniversalPlatform.isDesktopOrWeb) {
       child = AppFlowyPopover(
         controller: controller,
         direction: PopoverDirection.bottomWithLeftAligned,

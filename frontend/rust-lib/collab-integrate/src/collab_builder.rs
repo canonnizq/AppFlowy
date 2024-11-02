@@ -3,12 +3,14 @@ use std::fmt::{Debug, Display};
 use std::sync::{Arc, Weak};
 
 use crate::CollabKVDB;
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use arc_swap::{ArcSwap, ArcSwapOption};
 use collab::core::collab::DataSource;
 use collab::core::collab_plugin::CollabPersistence;
+use collab::entity::EncodedCollab;
+use collab::error::CollabError;
 use collab::preclude::{Collab, CollabBuilder};
-use collab_database::workspace_database::{DatabaseCollabService, WorkspaceDatabase};
+use collab_database::workspace_database::{DatabaseCollabService, WorkspaceDatabaseManager};
 use collab_document::blocks::DocumentData;
 use collab_document::document::Document;
 use collab_entity::{CollabObject, CollabType};
@@ -161,7 +163,26 @@ impl AppFlowyCollabBuilder {
     let mut collab = self.build_collab(&object, &collab_db, data_source)?;
     collab.enable_undo_redo();
 
-    let document = Document::open_with(collab, data)?;
+    let document = match data {
+      None => Document::open(collab)?,
+      Some(data) => {
+        let document = Document::create_with_data(collab, data)?;
+        if let Err(err) = self.write_collab_to_disk(
+          object.uid,
+          &object.workspace_id,
+          &object.object_id,
+          collab_db.clone(),
+          &object.collab_type,
+          &document,
+        ) {
+          error!(
+            "build_collab: flush document collab to disk failed: {}",
+            err
+          );
+        }
+        document
+      },
+    };
     let document = Arc::new(RwLock::new(document));
     self.finalize(object, builder_config, document)
   }
@@ -182,8 +203,27 @@ impl AppFlowyCollabBuilder {
   ) -> Result<Arc<RwLock<Folder>>, Error> {
     let expected_collab_type = CollabType::Folder;
     assert_eq!(object.collab_type, expected_collab_type);
-    let collab = self.build_collab(&object, &collab_db, doc_state)?;
-    let folder = Folder::open_with(object.uid, collab, folder_notifier, folder_data);
+    let folder = match folder_data {
+      None => {
+        let collab = self.build_collab(&object, &collab_db, doc_state)?;
+        Folder::open(object.uid, collab, folder_notifier)?
+      },
+      Some(data) => {
+        let collab = self.build_collab(&object, &collab_db, doc_state)?;
+        let folder = Folder::create(object.uid, collab, folder_notifier, data);
+        if let Err(err) = self.write_collab_to_disk(
+          object.uid,
+          &object.workspace_id,
+          &object.object_id,
+          collab_db.clone(),
+          &object.collab_type,
+          &folder,
+        ) {
+          error!("build_collab: flush folder collab to disk failed: {}", err);
+        }
+        folder
+      },
+    };
     let folder = Arc::new(RwLock::new(folder));
     self.finalize(object, builder_config, folder)
   }
@@ -204,24 +244,24 @@ impl AppFlowyCollabBuilder {
     let expected_collab_type = CollabType::UserAwareness;
     assert_eq!(object.collab_type, expected_collab_type);
     let collab = self.build_collab(&object, &collab_db, doc_state)?;
-    let user_awareness = UserAwareness::open(collab, notifier);
+    let user_awareness = UserAwareness::create(collab, notifier)?;
     let user_awareness = Arc::new(RwLock::new(user_awareness));
     self.finalize(object, builder_config, user_awareness)
   }
 
   #[allow(clippy::too_many_arguments)]
   #[instrument(level = "trace", skip_all)]
-  pub fn create_workspace_database(
+  pub fn create_workspace_database_manager(
     &self,
     object: CollabObject,
     collab: Collab,
     _collab_db: Weak<CollabKVDB>,
     builder_config: CollabBuilderConfig,
     collab_service: impl DatabaseCollabService,
-  ) -> Result<Arc<RwLock<WorkspaceDatabase>>, Error> {
+  ) -> Result<Arc<RwLock<WorkspaceDatabaseManager>>, Error> {
     let expected_collab_type = CollabType::WorkspaceDatabase;
     assert_eq!(object.collab_type, expected_collab_type);
-    let workspace = WorkspaceDatabase::open(&object.object_id, collab, collab_service);
+    let workspace = WorkspaceDatabaseManager::open(&object.object_id, collab, collab_service)?;
     let workspace = Arc::new(RwLock::new(workspace));
     self.finalize(object, builder_config, workspace)
   }
@@ -239,6 +279,7 @@ impl AppFlowyCollabBuilder {
     let persistence_config = CollabPersistenceConfig::default();
     let db_plugin = RocksdbDiskPlugin::new_with_config(
       object.uid,
+      object.workspace_id.clone(),
       object.object_id.to_string(),
       object.collab_type.clone(),
       collab_db.clone(),
@@ -259,6 +300,12 @@ impl AppFlowyCollabBuilder {
     T: BorrowMut<Collab> + Send + Sync + 'static,
   {
     let mut write_collab = collab.try_write()?;
+    let has_cloud_plugin = write_collab.borrow().has_cloud_plugin();
+    if has_cloud_plugin {
+      drop(write_collab);
+      return Ok(collab);
+    }
+
     if build_config.sync_enable {
       trace!("🚀finalize collab:{}", object);
       let plugin_provider = self.plugin_provider.load_full();
@@ -290,9 +337,11 @@ impl AppFlowyCollabBuilder {
   }
 
   /// Remove all updates in disk and write the final state vector to disk.
-  pub fn flush_collab_if_not_exist<T>(
+  #[instrument(level = "trace", skip_all, err)]
+  pub fn write_collab_to_disk<T>(
     &self,
     uid: i64,
+    workspace_id: &str,
     object_id: &str,
     collab_db: Weak<CollabKVDB>,
     collab_type: &CollabType,
@@ -303,20 +352,20 @@ impl AppFlowyCollabBuilder {
   {
     if let Some(collab_db) = collab_db.upgrade() {
       let write_txn = collab_db.write_txn();
-      let is_not_exist_on_disk = !write_txn.is_exist(uid, object_id);
-      if is_not_exist_on_disk {
-        trace!("flush collab:{}-{}-{} to disk", uid, collab_type, object_id);
-        let collab: &Collab = collab.borrow();
-        let encode_collab =
-          collab.encode_collab_v1(|collab| collab_type.validate_require_data(collab))?;
-        write_txn.flush_doc(
-          uid,
-          object_id,
-          encode_collab.state_vector.to_vec(),
-          encode_collab.doc_state.to_vec(),
-        )?;
-        write_txn.commit_transaction()?;
-      }
+      trace!("flush collab:{}-{}-{} to disk", uid, collab_type, object_id);
+      let collab: &Collab = collab.borrow();
+      let encode_collab =
+        collab.encode_collab_v1(|collab| collab_type.validate_require_data(collab))?;
+      write_txn.flush_doc(
+        uid,
+        workspace_id,
+        object_id,
+        encode_collab.state_vector.to_vec(),
+        encode_collab.doc_state.to_vec(),
+      )?;
+      write_txn.commit_transaction()?;
+    } else {
+      error!("collab_db is dropped");
     }
 
     Ok(())
@@ -340,14 +389,19 @@ impl CollabBuilderConfig {
   }
 }
 
-pub struct KVDBCollabPersistenceImpl {
+pub struct CollabPersistenceImpl {
   pub db: Weak<CollabKVDB>,
   pub uid: i64,
+  pub workspace_id: String,
 }
 
-impl KVDBCollabPersistenceImpl {
-  pub fn new(db: Weak<CollabKVDB>, uid: i64) -> Self {
-    Self { db, uid }
+impl CollabPersistenceImpl {
+  pub fn new(db: Weak<CollabKVDB>, uid: i64, workspace_id: String) -> Self {
+    Self {
+      db,
+      uid,
+      workspace_id,
+    }
   }
 
   pub fn into_data_source(self) -> DataSource {
@@ -355,33 +409,61 @@ impl KVDBCollabPersistenceImpl {
   }
 }
 
-impl CollabPersistence for KVDBCollabPersistenceImpl {
-  fn load_collab_from_disk(&self, collab: &mut Collab) {
-    if let Some(collab_db) = self.db.upgrade() {
-      let object_id = collab.object_id().to_string();
-      let rocksdb_read = collab_db.read_txn();
+impl CollabPersistence for CollabPersistenceImpl {
+  fn load_collab_from_disk(&self, collab: &mut Collab) -> Result<(), CollabError> {
+    let collab_db = self
+      .db
+      .upgrade()
+      .ok_or_else(|| CollabError::Internal(anyhow!("collab_db is dropped")))?;
 
-      if rocksdb_read.is_exist(self.uid, &object_id) {
-        let mut txn = collab.transact_mut();
-        match rocksdb_read.load_doc_with_txn(self.uid, &object_id, &mut txn) {
-          Ok(update_count) => {
-            trace!(
-              "did load collab:{}-{} from disk, update_count:{}",
-              self.uid,
-              object_id,
-              update_count
-            );
-          },
-          Err(err) => {
-            error!("🔴 load doc:{} failed: {}", object_id, err);
-          },
-        }
-        drop(rocksdb_read);
-        txn.commit();
-        drop(txn);
+    let object_id = collab.object_id().to_string();
+    let rocksdb_read = collab_db.read_txn();
+
+    if rocksdb_read.is_exist(self.uid, &self.workspace_id, &object_id) {
+      let mut txn = collab.transact_mut();
+      match rocksdb_read.load_doc_with_txn(self.uid, &self.workspace_id, &object_id, &mut txn) {
+        Ok(update_count) => {
+          trace!(
+            "did load collab:{}-{} from disk, update_count:{}",
+            self.uid,
+            object_id,
+            update_count
+          );
+        },
+        Err(err) => {
+          error!("🔴 load doc:{} failed: {}", object_id, err);
+        },
       }
-    } else {
-      warn!("collab_db is dropped");
+      drop(rocksdb_read);
+      txn.commit();
+      drop(txn);
     }
+    Ok(())
+  }
+
+  fn save_collab_to_disk(
+    &self,
+    object_id: &str,
+    encoded_collab: EncodedCollab,
+  ) -> Result<(), CollabError> {
+    let collab_db = self
+      .db
+      .upgrade()
+      .ok_or_else(|| CollabError::Internal(anyhow!("collab_db is dropped")))?;
+    let write_txn = collab_db.write_txn();
+    write_txn
+      .flush_doc(
+        self.uid,
+        self.workspace_id.as_str(),
+        object_id,
+        encoded_collab.state_vector.to_vec(),
+        encoded_collab.doc_state.to_vec(),
+      )
+      .map_err(|err| CollabError::Internal(err.into()))?;
+
+    write_txn
+      .commit_transaction()
+      .map_err(|err| CollabError::Internal(err.into()))?;
+    Ok(())
   }
 }

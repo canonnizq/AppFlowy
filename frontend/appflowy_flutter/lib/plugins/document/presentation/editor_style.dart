@@ -5,7 +5,6 @@ import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/mobile/application/page_style/document_page_style_bloc.dart';
 import 'package:appflowy/plugins/document/application/document_appearance_cubit.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/base/font_colors.dart';
-import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/mention_block.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mobile_toolbar_item/utils.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/plugins.dart';
 import 'package:appflowy/plugins/inline_actions/inline_actions_menu.dart';
@@ -14,7 +13,7 @@ import 'package:appflowy/util/font_family_extension.dart';
 import 'package:appflowy/workspace/application/appearance_defaults.dart';
 import 'package:appflowy/workspace/application/settings/appearance/appearance_cubit.dart';
 import 'package:appflowy/workspace/application/settings/appearance/base_appearance.dart';
-import 'package:appflowy_editor/appflowy_editor.dart' hide Log;
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:collection/collection.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/theme_extension.dart';
@@ -25,25 +24,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 class EditorStyleCustomizer {
-  EditorStyleCustomizer({required this.context, required this.padding});
+  EditorStyleCustomizer({
+    required this.context,
+    required this.padding,
+    this.width,
+  });
 
   final BuildContext context;
   final EdgeInsets padding;
+  final double? width;
+
+  static const double maxDocumentWidth = 480 * 4;
+  static const double minDocumentWidth = 480;
+
+  static EdgeInsets get documentPadding => UniversalPlatform.isMobile
+      ? const EdgeInsets.symmetric(horizontal: 24)
+      : EdgeInsets.only(
+          left: 40,
+          right: 40 + EditorStyleCustomizer.optionMenuWidth,
+        );
+
+  static EdgeInsets get documentPaddingWithOptionMenu =>
+      documentPadding + EdgeInsets.only(left: optionMenuWidth);
+
+  static double get optionMenuWidth => UniversalPlatform.isMobile ? 0 : 44;
 
   EditorStyle style() {
-    if (PlatformExtension.isDesktopOrWeb) {
+    if (UniversalPlatform.isDesktopOrWeb) {
       return desktop();
-    } else if (PlatformExtension.isMobile) {
+    } else if (UniversalPlatform.isMobile) {
       return mobile();
     }
     throw UnimplementedError();
   }
-
-  static EdgeInsets get documentPadding => PlatformExtension.isMobile
-      ? const EdgeInsets.only(left: 24, right: 24)
-      : const EdgeInsets.only(left: 40, right: 40 + 44);
 
   EditorStyle desktop() {
     final theme = Theme.of(context);
@@ -58,6 +74,7 @@ class EditorStyleCustomizer {
 
     return EditorStyle.desktop(
       padding: padding,
+      maxWidth: width,
       cursorColor: appearance.cursorColor ??
           DefaultAppearanceSettings.getDefaultCursorColor(context),
       selectionColor: appearance.selectionColor ??
@@ -155,9 +172,7 @@ class EditorStyleCustomizer {
     final String? fontFamily;
     final List<double> fontSizes;
     final double fontSize;
-    final FontWeight fontWeight =
-        level <= 2 ? FontWeight.w700 : FontWeight.w600;
-    if (PlatformExtension.isMobile) {
+    if (UniversalPlatform.isMobile) {
       final state = context.read<DocumentPageStyleBloc>().state;
       fontFamily = state.fontFamily;
       fontSize = state.fontLayout.fontSize;
@@ -174,7 +189,7 @@ class EditorStyleCustomizer {
         fontSize,
       ];
     }
-    return baseTextStyle(fontFamily, fontWeight: fontWeight).copyWith(
+    return baseTextStyle(fontFamily, fontWeight: FontWeight.w600).copyWith(
       fontSize: fontSizes.elementAtOrNull(level - 1) ?? fontSize,
     );
   }
@@ -191,7 +206,7 @@ class EditorStyleCustomizer {
   }
 
   TextStyle calloutBlockStyleBuilder() {
-    if (PlatformExtension.isMobile) {
+    if (UniversalPlatform.isMobile) {
       final afThemeExtension = AFThemeExtension.of(context);
       final pageStyle = context.read<DocumentPageStyleBloc>().state;
       final fontSize = pageStyle.fontLayout.fontSize;
@@ -350,7 +365,7 @@ class EditorStyleCustomizer {
 
     // customize the link on mobile
     final href = attributes[AppFlowyRichTextKeys.href] as String?;
-    if (PlatformExtension.isMobile && href != null) {
+    if (UniversalPlatform.isMobile && href != null) {
       return TextSpan(
         style: before.style,
         text: text.text,

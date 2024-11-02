@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/shared/colors.dart';
+import 'package:appflowy/shared/flowy_error_page.dart';
 import 'package:appflowy/util/int64_extension.dart';
 import 'package:appflowy/util/theme_extension.dart';
 import 'package:appflowy/workspace/application/settings/appearance/appearance_cubit.dart';
@@ -19,7 +21,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/size.dart';
 import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
-import 'package:flowy_infra_ui/widget/error_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -75,9 +76,10 @@ class _SettingsPlanViewState extends State<SettingsPlanView> {
               if (state.error != null) {
                 return Padding(
                   padding: const EdgeInsets.all(16),
-                  child: FlowyErrorPage.message(
-                    state.error!.msg,
-                    howToFix: LocaleKeys.errorDialog_howToFixFallback.tr(),
+                  child: Center(
+                    child: AppFlowyErrorPage(
+                      error: state.error!,
+                    ),
                   ),
                 );
               }
@@ -539,12 +541,6 @@ class _ToggleMoreState extends State<_ToggleMore> {
 
   @override
   Widget build(BuildContext context) {
-    final isLM = Theme.of(context).isLightMode;
-    final primaryColor =
-        isLM ? const Color(0xFF653E8C) : const Color(0xFFE8E2EE);
-    final secondaryColor =
-        isLM ? const Color(0xFFE8E2EE) : const Color(0xFF653E8C);
-
     return Row(
       children: [
         Toggle(
@@ -575,11 +571,11 @@ class _ToggleMoreState extends State<_ToggleMore> {
             height: 26,
             child: Badge(
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              backgroundColor: secondaryColor,
+              backgroundColor: context.proSecondaryColor,
               label: FlowyText.semibold(
                 widget.badgeLabel!,
                 fontSize: 12,
-                color: primaryColor,
+                color: context.proPrimaryColor,
               ),
             ),
           ),

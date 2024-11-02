@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/database/application/database_controller.dart';
@@ -10,9 +13,9 @@ import 'package:appflowy/startup/plugin/plugin.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/user/application/reminder/reminder_bloc.dart';
 import 'package:appflowy/workspace/application/tabs/tabs_bloc.dart';
+import 'package:appflowy_backend/protobuf/flowy-user/user_profile.pb.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../cell/editable_cell_builder.dart';
@@ -26,24 +29,39 @@ class RowDetailPage extends StatefulWidget with FlowyOverlayDelegate {
     required this.rowController,
     required this.databaseController,
     this.allowOpenAsFullPage = true,
+    this.userProfile,
   });
 
   final RowController rowController;
   final DatabaseController databaseController;
   final bool allowOpenAsFullPage;
+  final UserProfilePB? userProfile;
 
   @override
   State<RowDetailPage> createState() => _RowDetailPageState();
 }
 
 class _RowDetailPageState extends State<RowDetailPage> {
-  final scrollController = ScrollController();
   late final cellBuilder = EditableCellBuilder(
     databaseController: widget.databaseController,
   );
+  late final ScrollController scrollController;
+
+  double scrollOffset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    scrollController = ScrollController(
+      onAttach: (_) => attachScrollListener(),
+    );
+  }
+
+  void attachScrollListener() => scrollController.addListener(onScrollChanged);
 
   @override
   void dispose() {
+    scrollController.removeListener(onScrollChanged);
     scrollController.dispose();
     super.dispose();
   }
@@ -61,52 +79,78 @@ class _RowDetailPageState extends State<RowDetailPage> {
           ),
           BlocProvider.value(value: getIt<ReminderBloc>()),
         ],
-        child: Stack(
-          children: [
-            ListView(
-              controller: scrollController,
-              children: [
-                RowBanner(
-                  databaseController: widget.databaseController,
-                  rowController: widget.rowController,
-                  cellBuilder: cellBuilder,
-                  allowOpenAsFullPage: widget.allowOpenAsFullPage,
-                ),
-                const VSpace(16),
-                Padding(
-                  padding: const EdgeInsets.only(left: 40, right: 60),
-                  child: RowPropertyList(
+        child: BlocBuilder<RowDetailBloc, RowDetailState>(
+          builder: (context, state) => Stack(
+            children: [
+              ListView(
+                controller: scrollController,
+                physics: const ClampingScrollPhysics(),
+                children: [
+                  RowBanner(
+                    databaseController: widget.databaseController,
+                    rowController: widget.rowController,
                     cellBuilder: cellBuilder,
-                    viewId: widget.databaseController.viewId,
-                    fieldController: widget.databaseController.fieldController,
+                    allowOpenAsFullPage: widget.allowOpenAsFullPage,
+                    userProfile: widget.userProfile,
                   ),
-                ),
-                const VSpace(20),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 60),
-                  child: Divider(height: 1.0),
-                ),
-                const VSpace(20),
-                RowDocument(
-                  viewId: widget.rowController.viewId,
-                  rowId: widget.rowController.rowId,
-                ),
-              ],
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Row(
-                children: _actions(context),
+                  const VSpace(16),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 40, right: 60),
+                    child: RowPropertyList(
+                      cellBuilder: cellBuilder,
+                      viewId: widget.databaseController.viewId,
+                      fieldController:
+                          widget.databaseController.fieldController,
+                    ),
+                  ),
+                  const VSpace(20),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 60),
+                    child: Divider(height: 1.0),
+                  ),
+                  const VSpace(20),
+                  RowDocument(
+                    viewId: widget.rowController.viewId,
+                    rowId: widget.rowController.rowId,
+                  ),
+                ],
               ),
-            ),
-          ],
+              Positioned(
+                top: calculateActionsOffset(
+                  state.rowMeta.cover.data.isNotEmpty,
+                ),
+                right: 12,
+                child: Row(
+                  children: actions(context),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  List<Widget> _actions(BuildContext context) {
+  void onScrollChanged() {
+    if (scrollOffset != scrollController.offset) {
+      setState(() => scrollOffset = scrollController.offset);
+    }
+  }
+
+  double calculateActionsOffset(bool hasCover) {
+    if (!hasCover) {
+      return 12;
+    }
+
+    final offsetByScroll = clampDouble(
+      rowCoverHeight - scrollOffset,
+      0,
+      rowCoverHeight,
+    );
+    return 12 + offsetByScroll;
+  }
+
+  List<Widget> actions(BuildContext context) {
     return [
       if (widget.allowOpenAsFullPage) ...[
         FlowyTooltip(

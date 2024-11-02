@@ -1,6 +1,7 @@
 use bytes::Bytes;
 
 use collab_entity::{CollabType, EncodedCollab};
+use collab_folder::hierarchy_builder::NestedViewBuilder;
 use collab_integrate::collab_builder::AppFlowyCollabBuilder;
 use collab_integrate::CollabKVDB;
 use flowy_ai::ai_manager::AIManager;
@@ -20,7 +21,6 @@ use flowy_folder::view_operation::{
   FolderOperationHandlers, ImportedData, View, ViewData,
 };
 use flowy_folder::ViewLayout;
-use flowy_folder_pub::folder_builder::NestedViewBuilder;
 use flowy_search::folder::indexer::FolderIndexManagerImpl;
 use flowy_sqlite::kv::KVStorePreferences;
 use flowy_user::services::authenticate_user::AuthenticateUser;
@@ -138,7 +138,7 @@ impl FolderOperationHandler for DocumentFolderOperation {
         let json_str = include_str!("../../assets/read_me.json");
         let document_pb = JsonToDocumentParser::json_str_to_document(json_str).unwrap();
         manager
-          .create_document(uid, &view.parent_view.id, Some(document_pb.into()))
+          .create_document(uid, &view.view.id, Some(document_pb.into()))
           .await
           .unwrap();
         view
@@ -178,10 +178,14 @@ impl FolderOperationHandler for DocumentFolderOperation {
     params: CreateViewParams,
   ) -> Result<Option<EncodedCollab>, FlowyError> {
     debug_assert_eq!(params.layout, ViewLayoutPB::Document);
-    let data = DocumentDataPB::try_from(Bytes::from(params.initial_data))?;
+    let data = match params.initial_data {
+      ViewData::DuplicateData(data) => Some(DocumentDataPB::try_from(data)?),
+      ViewData::Data(data) => Some(DocumentDataPB::try_from(data)?),
+      ViewData::Empty => None,
+    };
     let encoded_collab = self
       .0
-      .create_document(user_id, &params.view_id, Some(data.into()))
+      .create_document(user_id, &params.view_id, data.map(|d| d.into()))
       .await?;
     Ok(Some(encoded_collab))
   }
@@ -193,7 +197,7 @@ impl FolderOperationHandler for DocumentFolderOperation {
   ) -> Result<EncodedCollabWrapper, FlowyError> {
     // get the collab_object_id for the document.
     // the collab_object_id for the document is the view_id.
-
+    let workspace_id = user.workspace_id()?;
     let uid = user
       .user_id()
       .map_err(|e| e.with_context("unable to get the uid: {}"))?;
@@ -210,9 +214,10 @@ impl FolderOperationHandler for DocumentFolderOperation {
     let collab_read_txn = collab_db.read_txn();
 
     // read the collab from the db
-    let collab = load_collab_by_object_id(uid, &collab_read_txn, view_id).map_err(|e| {
-      FlowyError::internal().with_context(format!("load document collab failed: {}", e))
-    })?;
+    let collab =
+      load_collab_by_object_id(uid, &collab_read_txn, &workspace_id, view_id).map_err(|e| {
+        FlowyError::internal().with_context(format!("load document collab failed: {}", e))
+      })?;
 
     let encoded_collab = collab
         // encode the collab and check the integrity of the collab
@@ -227,7 +232,7 @@ impl FolderOperationHandler for DocumentFolderOperation {
   }
 
   /// Create a view with built-in data.
-  async fn create_built_in_view(
+  async fn create_view_with_default_data(
     &self,
     user_id: i64,
     view_id: &str,
@@ -276,6 +281,10 @@ impl FolderOperationHandler for DocumentFolderOperation {
   ) -> Result<(), FlowyError> {
     Ok(())
   }
+
+  fn name(&self) -> &str {
+    "DocumentFolderOperationHandler"
+  }
 }
 
 struct DatabaseFolderOperation(Arc<DatabaseManager>);
@@ -305,12 +314,21 @@ impl FolderOperationHandler for DatabaseFolderOperation {
     user: Arc<dyn FolderUser>,
     view_id: &str,
   ) -> Result<EncodedCollabWrapper, FlowyError> {
+    let workspace_id = user.workspace_id()?;
     // get the collab_object_id for the database.
     //
     // the collab object_id for the database is not the view_id,
     //  we should use the view_id to get the database_id
     let oid = self.0.get_database_id_with_view_id(view_id).await?;
     let row_oids = self.0.get_database_row_ids_with_view_id(view_id).await?;
+    let row_metas = self
+      .0
+      .get_database_row_metas_with_view_id(view_id, row_oids.clone())
+      .await?;
+    let row_document_ids = row_metas
+      .iter()
+      .filter_map(|meta| meta.document_id.clone())
+      .collect::<Vec<_>>();
     let row_oids = row_oids
       .into_iter()
       .map(|oid| oid.into_inner())
@@ -331,54 +349,74 @@ impl FolderOperationHandler for DatabaseFolderOperation {
       )
     })?;
 
-    let collab_read_txn = collab_db.read_txn();
+    tokio::task::spawn_blocking(move || {
+      let collab_read_txn = collab_db.read_txn();
 
-    // read the database collab from the db
-    let database_collab = load_collab_by_object_id(uid, &collab_read_txn, &oid).map_err(|e| {
-      FlowyError::internal().with_context(format!("load database collab failed: {}", e))
-    })?;
-
-    let database_encoded_collab = database_collab
-        // encode the collab and check the integrity of the collab
-        .encode_collab_v1(|collab| CollabType::Database.validate_require_data(collab))
+      let database_collab = load_collab_by_object_id(uid, &collab_read_txn, &workspace_id, &oid)
         .map_err(|e| {
-          FlowyError::internal().with_context(format!("encode database collab failed: {}", e))
+          FlowyError::internal().with_context(format!("load database collab failed: {}", e))
         })?;
 
-    // read the database rows collab from the db
-    let database_row_collabs = load_collab_by_object_ids(uid, &collab_read_txn, &row_oids);
-    let database_row_encoded_collabs = database_row_collabs
-      .into_iter()
-      .map(|(oid, collab)| {
-        // encode the collab and check the integrity of the collab
-        let encoded_collab = collab
-          .encode_collab_v1(|collab| CollabType::DatabaseRow.validate_require_data(collab))
+      let database_encoded_collab = database_collab
+          // encode the collab and check the integrity of the collab
+          .encode_collab_v1(|collab| CollabType::Database.validate_require_data(collab))
           .map_err(|e| {
-            FlowyError::internal().with_context(format!("encode database row collab failed: {}", e))
+            FlowyError::internal().with_context(format!("encode database collab failed: {}", e))
           })?;
-        Ok((oid, encoded_collab))
-      })
-      .collect::<Result<HashMap<_, _>, FlowyError>>()?;
 
-    // get the relation info from the database meta
-    let database_relations = database_metas
-      .into_iter()
-      .filter_map(|meta| {
-        let linked_views = meta.linked_views.into_iter().next()?;
-        Some((meta.database_id, linked_views))
-      })
-      .collect::<HashMap<_, _>>();
+      let database_row_encoded_collabs =
+        load_collab_by_object_ids(uid, &workspace_id, &collab_read_txn, &row_oids)
+          .0
+          .into_iter()
+          .map(|(oid, collab)| {
+            collab
+              .encode_collab_v1(|c| CollabType::DatabaseRow.validate_require_data(c))
+              .map(|encoded| (oid, encoded))
+              .map_err(|e| {
+                FlowyError::internal().with_context(format!("Database row collab error: {}", e))
+              })
+          })
+          .collect::<Result<HashMap<_, _>, FlowyError>>()?;
 
-    Ok(EncodedCollabWrapper::Database(DatabaseEncodedCollab {
-      database_encoded_collab,
-      database_row_encoded_collabs,
-      database_relations,
-    }))
+      let database_relations = database_metas
+        .into_iter()
+        .filter_map(|meta| {
+          meta
+            .linked_views
+            .clone()
+            .into_iter()
+            .next()
+            .map(|lv| (meta.database_id, lv))
+        })
+        .collect::<HashMap<_, _>>();
+
+      let database_row_document_encoded_collabs =
+        load_collab_by_object_ids(uid, &workspace_id, &collab_read_txn, &row_document_ids)
+          .0
+          .into_iter()
+          .map(|(oid, collab)| {
+            collab
+              .encode_collab_v1(|c| CollabType::Document.validate_require_data(c))
+              .map(|encoded| (oid, encoded))
+              .map_err(|e| {
+                FlowyError::internal()
+                  .with_context(format!("Database row document collab error: {}", e))
+              })
+          })
+          .collect::<Result<HashMap<_, _>, FlowyError>>()?;
+
+      Ok(EncodedCollabWrapper::Database(DatabaseEncodedCollab {
+        database_encoded_collab,
+        database_row_encoded_collabs,
+        database_row_document_encoded_collabs,
+        database_relations,
+      }))
+    })
+    .await?
   }
 
   async fn duplicate_view(&self, view_id: &str) -> Result<Bytes, FlowyError> {
-    let delta_bytes = self.0.get_database_json_bytes(view_id).await?;
-    Ok(Bytes::from(delta_bytes))
+    Ok(Bytes::from(view_id.to_string()))
   }
 
   /// Create a database view with duplicated data.
@@ -390,12 +428,24 @@ impl FolderOperationHandler for DatabaseFolderOperation {
     params: CreateViewParams,
   ) -> Result<Option<EncodedCollab>, FlowyError> {
     match CreateDatabaseExtParams::from_map(params.meta.clone()) {
-      None => {
-        let encoded_collab = self
-          .0
-          .create_database_with_database_data(&params.view_id, params.initial_data)
-          .await?;
-        Ok(Some(encoded_collab))
+      None => match params.initial_data {
+        ViewData::DuplicateData(data) => {
+          let duplicated_view_id =
+            String::from_utf8(data.to_vec()).map_err(|_| FlowyError::invalid_data())?;
+          let encoded_collab = self
+            .0
+            .duplicate_database(&duplicated_view_id, &params.view_id)
+            .await?;
+          Ok(Some(encoded_collab))
+        },
+        ViewData::Data(data) => {
+          let encoded_collab = self
+            .0
+            .create_database_with_data(&params.view_id, data.to_vec())
+            .await?;
+          Ok(Some(encoded_collab))
+        },
+        ViewData::Empty => Ok(None),
       },
       Some(database_params) => {
         let layout = match params.layout {
@@ -428,7 +478,7 @@ impl FolderOperationHandler for DatabaseFolderOperation {
   /// If the ext contains the {"database_id": "xx"}, then it will link to
   /// the existing database. The data of the database will be shared within
   /// these references views.
-  async fn create_built_in_view(
+  async fn create_view_with_default_data(
     &self,
     _user_id: i64,
     view_id: &str,
@@ -446,7 +496,7 @@ impl FolderOperationHandler for DatabaseFolderOperation {
         );
       },
     };
-    let result = self.0.create_database_with_params(data).await;
+    let result = self.0.import_database(data).await;
     match result {
       Ok(_) => Ok(()),
       Err(err) => {
@@ -469,8 +519,7 @@ impl FolderOperationHandler for DatabaseFolderOperation {
   ) -> Result<Vec<ImportedData>, FlowyError> {
     let format = match import_type {
       ImportType::CSV => CSVFormat::Original,
-      ImportType::HistoryDatabase => CSVFormat::META,
-      ImportType::RawDatabase => CSVFormat::META,
+      ImportType::AFDatabase => CSVFormat::META,
       _ => CSVFormat::Original,
     };
     let content = tokio::task::spawn_blocking(move || {
@@ -526,6 +575,10 @@ impl FolderOperationHandler for DatabaseFolderOperation {
       Ok(())
     }
   }
+
+  fn name(&self) -> &str {
+    "DatabaseFolderOperationHandler"
+  }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -544,6 +597,10 @@ struct ChatFolderOperation(Arc<AIManager>);
 
 #[async_trait]
 impl FolderOperationHandler for ChatFolderOperation {
+  fn name(&self) -> &str {
+    "ChatFolderOperationHandler"
+  }
+
   async fn open_view(&self, view_id: &str) -> Result<(), FlowyError> {
     self.0.open_chat(view_id).await
   }
@@ -556,7 +613,7 @@ impl FolderOperationHandler for ChatFolderOperation {
     self.0.delete_chat(view_id).await
   }
 
-  async fn duplicate_view(&self, _view_id: &str) -> Result<ViewData, FlowyError> {
+  async fn duplicate_view(&self, _view_id: &str) -> Result<Bytes, FlowyError> {
     Err(FlowyError::not_support())
   }
 
@@ -568,7 +625,7 @@ impl FolderOperationHandler for ChatFolderOperation {
     Err(FlowyError::not_support())
   }
 
-  async fn create_built_in_view(
+  async fn create_view_with_default_data(
     &self,
     user_id: i64,
     view_id: &str,

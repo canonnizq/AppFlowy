@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
+import 'package:appflowy/startup/plugin/plugin.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/workspace/application/favorite/favorite_bloc.dart';
 import 'package:appflowy/workspace/application/sidebar/folder/folder_bloc.dart';
@@ -23,13 +24,14 @@ import 'package:appflowy/workspace/presentation/widgets/rename_view_popover.dart
 import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/protobuf.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
-import 'package:appflowy_editor/appflowy_editor.dart' hide Log;
-import 'package:appflowy_popover/appflowy_popover.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/hover.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 typedef ViewItemOnSelected = void Function(BuildContext context, ViewPB view);
 typedef ViewItemLeftIconBuilder = Widget Function(
@@ -40,6 +42,8 @@ typedef ViewItemRightIconsBuilder = List<Widget> Function(
   BuildContext context,
   ViewPB view,
 );
+
+enum IgnoreViewType { none, hide, disable }
 
 class ViewItem extends StatelessWidget {
   const ViewItem({
@@ -66,6 +70,7 @@ class ViewItem extends StatelessWidget {
     this.extendBuilder,
     this.disableSelectedStatus,
     this.shouldIgnoreView,
+    this.enableRightClickContext = false,
   });
 
   final ViewPB view;
@@ -125,7 +130,11 @@ class ViewItem extends StatelessWidget {
   final bool? disableSelectedStatus;
 
   // ignore the views when rendering the child views
-  final bool Function(ViewPB view)? shouldIgnoreView;
+  final IgnoreViewType Function(ViewPB view)? shouldIgnoreView;
+
+  /// Whether to add right-click to show the view action context menu
+  ///
+  final bool enableRightClickContext;
 
   @override
   Widget build(BuildContext context) {
@@ -141,13 +150,14 @@ class ViewItem extends StatelessWidget {
             context.read<TabsBloc>().openPlugin(state.lastCreatedView!),
         builder: (context, state) {
           // filter the child views that should be ignored
-          var childViews = state.view.childViews;
+          List<ViewPB> childViews = state.view.childViews;
           if (shouldIgnoreView != null) {
             childViews = childViews
-                .where((childView) => !shouldIgnoreView!(childView))
+                .where((v) => shouldIgnoreView!(v) != IgnoreViewType.hide)
                 .toList();
           }
-          return InnerViewItem(
+
+          final Widget child = InnerViewItem(
             view: state.view,
             parentView: parentView,
             childViews: childViews,
@@ -155,6 +165,7 @@ class ViewItem extends StatelessWidget {
             level: level,
             leftPadding: leftPadding,
             showActions: state.isEditing,
+            enableRightClickContext: enableRightClickContext,
             isExpanded: state.isExpanded,
             disableSelectedStatus: disableSelectedStatus,
             onSelected: onSelected,
@@ -173,12 +184,28 @@ class ViewItem extends StatelessWidget {
             extendBuilder: extendBuilder,
             shouldIgnoreView: shouldIgnoreView,
           );
+
+          if (shouldIgnoreView?.call(view) == IgnoreViewType.disable) {
+            return Opacity(
+              opacity: 0.5,
+              child: FlowyTooltip(
+                message: LocaleKeys.space_cannotMovePageToDatabase.tr(),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.forbidden,
+                  child: IgnorePointer(child: child),
+                ),
+              ),
+            );
+          }
+
+          return child;
         },
       ),
     );
   }
 }
 
+// TODO: We shouldn't have local global variables
 bool _isDragging = false;
 
 class InnerViewItem extends StatefulWidget {
@@ -193,6 +220,7 @@ class InnerViewItem extends StatefulWidget {
     required this.level,
     required this.leftPadding,
     required this.showActions,
+    this.enableRightClickContext = false,
     required this.onSelected,
     this.onTertiarySelected,
     this.isFirstChild = false,
@@ -225,6 +253,7 @@ class InnerViewItem extends StatefulWidget {
   final double leftPadding;
 
   final bool showActions;
+  final bool enableRightClickContext;
   final ViewItemOnSelected onSelected;
   final ViewItemOnSelected? onTertiarySelected;
   final double height;
@@ -239,7 +268,7 @@ class InnerViewItem extends StatefulWidget {
 
   final PropertyValueNotifier<bool>? isExpandedNotifier;
   final List<Widget> Function(ViewPB view)? extendBuilder;
-  final bool Function(ViewPB view)? shouldIgnoreView;
+  final IgnoreViewType Function(ViewPB view)? shouldIgnoreView;
 
   @override
   State<InnerViewItem> createState() => _InnerViewItemState();
@@ -269,6 +298,7 @@ class _InnerViewItemState extends State<InnerViewItem> {
           parentView: widget.parentView,
           level: widget.level,
           showActions: widget.showActions,
+          enableRightClickContext: widget.enableRightClickContext,
           spaceType: widget.spaceType,
           onSelected: widget.onSelected,
           onTertiarySelected: widget.onTertiarySelected,
@@ -301,6 +331,7 @@ class _InnerViewItemState extends State<InnerViewItem> {
           isFirstChild: childView.id == widget.childViews.first.id,
           view: childView,
           level: widget.level + 1,
+          enableRightClickContext: widget.enableRightClickContext,
           onSelected: widget.onSelected,
           onTertiarySelected: widget.onTertiarySelected,
           isDraggable: widget.isDraggable,
@@ -318,10 +349,7 @@ class _InnerViewItemState extends State<InnerViewItem> {
 
       child = Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          child,
-          ...children,
-        ],
+        children: [child, ...children],
       );
     }
 
@@ -331,11 +359,9 @@ class _InnerViewItemState extends State<InnerViewItem> {
       child = DraggableViewItem(
         isFirstChild: widget.isFirstChild,
         view: widget.view,
-        onDragging: (isDragging) {
-          _isDragging = isDragging;
-        },
+        onDragging: (isDragging) => _isDragging = isDragging,
         onMove: widget.isPlaceholder
-            ? (from, to) => _moveViewCrossSection(
+            ? (from, to) => moveViewCrossSpace(
                   context,
                   null,
                   widget.view,
@@ -345,32 +371,31 @@ class _InnerViewItemState extends State<InnerViewItem> {
                   to.parentViewId,
                 )
             : null,
-        feedback: (context) {
-          return Container(
-            width: 250,
-            decoration: BoxDecoration(
-              color: Brightness.light == Theme.of(context).brightness
-                  ? Colors.white
-                  : Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ViewItem(
-              view: widget.view,
-              parentView: widget.parentView,
-              spaceType: widget.spaceType,
-              level: widget.level,
-              onSelected: widget.onSelected,
-              onTertiarySelected: widget.onTertiarySelected,
-              isDraggable: false,
-              leftPadding: widget.leftPadding,
-              isFeedback: true,
-              leftIconBuilder: widget.leftIconBuilder,
-              rightIconsBuilder: widget.rightIconsBuilder,
-              extendBuilder: widget.extendBuilder,
-              shouldIgnoreView: widget.shouldIgnoreView,
-            ),
-          );
-        },
+        feedback: (context) => Container(
+          width: 250,
+          decoration: BoxDecoration(
+            color: Brightness.light == Theme.of(context).brightness
+                ? Colors.white
+                : Colors.black54,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ViewItem(
+            view: widget.view,
+            parentView: widget.parentView,
+            spaceType: widget.spaceType,
+            level: widget.level,
+            onSelected: widget.onSelected,
+            onTertiarySelected: widget.onTertiarySelected,
+            isDraggable: false,
+            leftPadding: widget.leftPadding,
+            isFeedback: true,
+            enableRightClickContext: widget.enableRightClickContext,
+            leftIconBuilder: widget.leftIconBuilder,
+            rightIconsBuilder: widget.rightIconsBuilder,
+            extendBuilder: widget.extendBuilder,
+            shouldIgnoreView: widget.shouldIgnoreView,
+          ),
+        ),
         child: child,
       );
     } else {
@@ -402,6 +427,7 @@ class SingleInnerViewItem extends StatefulWidget {
     this.isDraggable = true,
     required this.spaceType,
     required this.showActions,
+    this.enableRightClickContext = false,
     required this.onSelected,
     this.onTertiarySelected,
     required this.isFeedback,
@@ -428,6 +454,7 @@ class SingleInnerViewItem extends StatefulWidget {
 
   final bool isDraggable;
   final bool showActions;
+  final bool enableRightClickContext;
   final ViewItemOnSelected onSelected;
   final ViewItemOnSelected? onTertiarySelected;
   final FolderSpaceType spaceType;
@@ -441,7 +468,7 @@ class SingleInnerViewItem extends StatefulWidget {
   final ViewItemRightIconsBuilder? rightIconsBuilder;
 
   final List<Widget> Function(ViewPB view)? extendBuilder;
-  final bool Function(ViewPB view)? shouldIgnoreView;
+  final IgnoreViewType Function(ViewPB view)? shouldIgnoreView;
   final bool isSelected;
 
   @override
@@ -450,21 +477,20 @@ class SingleInnerViewItem extends StatefulWidget {
 
 class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
   final controller = PopoverController();
+  final viewMoreActionController = PopoverController();
+
   bool isIconPickerOpened = false;
 
   @override
   Widget build(BuildContext context) {
-    var isSelected = widget.isSelected;
+    bool isSelected = widget.isSelected;
 
     if (widget.disableSelectedStatus == true) {
       isSelected = false;
     }
 
     if (widget.isPlaceholder) {
-      return const SizedBox(
-        height: 4,
-        width: double.infinity,
-      );
+      return const SizedBox(height: 4, width: double.infinity);
     }
 
     if (widget.isFeedback || !widget.isHoverEnabled) {
@@ -475,20 +501,18 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
     }
 
     return FlowyHover(
-      style: HoverStyle(
-        hoverColor: Theme.of(context).colorScheme.secondary,
-      ),
+      style: HoverStyle(hoverColor: Theme.of(context).colorScheme.secondary),
       resetHoverOnRebuild: widget.showActions || !isIconPickerOpened,
       buildWhenOnHover: () =>
           !widget.showActions && !_isDragging && !isIconPickerOpened,
-      builder: (_, onHover) => _buildViewItem(onHover, isSelected),
       isSelected: () => widget.showActions || isSelected,
+      builder: (_, onHover) => _buildViewItem(onHover, isSelected),
     );
   }
 
   Widget _buildViewItem(bool onHover, [bool isSelected = false]) {
     final name = FlowyText.regular(
-      widget.view.name,
+      widget.view.nameOrDefault,
       overflow: TextOverflow.ellipsis,
       fontSize: 14.0,
       figmaLineHeight: 18.0,
@@ -502,16 +526,16 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
       _buildViewIconButton(),
       const HSpace(6),
       // title
-      widget.extendBuilder != null
-          ? Expanded(
-              child: Row(
+      Expanded(
+        child: widget.extendBuilder != null
+            ? Row(
                 children: [
                   Flexible(child: name),
                   ...widget.extendBuilder!(widget.view),
                 ],
-              ),
-            )
-          : Expanded(child: name),
+              )
+            : name,
+      ),
     ];
 
     // hover action
@@ -520,7 +544,20 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
         children.addAll(widget.rightIconsBuilder!(context, widget.view));
       } else {
         // ··· more action button
-        children.add(_buildViewMoreActionButton(context));
+        children.add(
+          _buildViewMoreActionButton(
+            context,
+            viewMoreActionController,
+            (_) => FlowyTooltip(
+              message: LocaleKeys.menuAppHeader_moreButtonToolTip.tr(),
+              child: FlowyIconButton(
+                width: 24,
+                icon: const FlowySvg(FlowySvgs.workspace_three_dots_s),
+                onPressed: viewMoreActionController.show,
+              ),
+            ),
+          ),
+        );
         // only support add button for document layout
         if (widget.view.layout == ViewLayoutPB.Document) {
           // + button
@@ -540,8 +577,18 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
         height: widget.height,
         child: Padding(
           padding: EdgeInsets.only(left: widget.level * widget.leftPadding),
-          child: Row(
-            children: children,
+          child: Listener(
+            onPointerDown: (event) {
+              if (event.buttons == kSecondaryMouseButton &&
+                  widget.enableRightClickContext) {
+                viewMoreActionController.showAt(
+                  // We add some horizontal offset
+                  event.position + const Offset(4, 0),
+                );
+              }
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Row(children: children),
           ),
         ),
       ),
@@ -569,11 +616,13 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
   }
 
   Widget _buildViewIconButton() {
+    // using same line height on macos will result the emoji not aligned vertically with the text
+    final height = UniversalPlatform.isMacOS ? 20.0 : 18.0;
     final icon = widget.view.icon.value.isNotEmpty
         ? FlowyText.emoji(
             widget.view.icon.value,
             fontSize: 16.0,
-            figmaLineHeight: 21.0,
+            figmaLineHeight: height,
           )
         : Opacity(opacity: 0.6, child: widget.view.defaultIcon());
 
@@ -612,93 +661,80 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
   // show > if the view is expandable.
   // show · if the view can't contain child views.
   Widget _buildLeftIcon() {
-    if (isReferencedDatabaseView(widget.view, widget.parentView)) {
-      return const _DotIconWidget();
-    }
-
-    if (context.read<ViewBloc>().state.view.childViews.isEmpty) {
-      return HSpace(widget.leftPadding);
-    }
-
-    final child = FlowyHover(
-      child: GestureDetector(
-        child: FlowySvg(
-          widget.isExpanded
-              ? FlowySvgs.view_item_expand_s
-              : FlowySvgs.view_item_unexpand_s,
-          size: const Size.square(16.0),
-        ),
-        onTap: () => context
-            .read<ViewBloc>()
-            .add(ViewEvent.setIsExpanded(!widget.isExpanded)),
-      ),
+    return ViewItemDefaultLeftIcon(
+      view: widget.view,
+      parentView: widget.parentView,
+      isExpanded: widget.isExpanded,
+      leftPadding: widget.leftPadding,
+      isHovered: widget.isHovered,
     );
-
-    if (widget.isHovered != null) {
-      return ValueListenableBuilder<bool>(
-        valueListenable: widget.isHovered!,
-        builder: (_, isHovered, child) {
-          return Opacity(opacity: isHovered ? 1.0 : 0.0, child: child);
-        },
-        child: child,
-      );
-    }
-
-    return child;
   }
 
   // + button
   Widget _buildViewAddButton(BuildContext context) {
-    final viewBloc = context.read<ViewBloc>();
     return FlowyTooltip(
       message: LocaleKeys.menuAppHeader_addPageTooltip.tr(),
       child: ViewAddButton(
         parentViewId: widget.view.id,
         onEditing: (value) =>
             context.read<ViewBloc>().add(ViewEvent.setIsEditing(value)),
-        onSelected: (
-          pluginBuilder,
-          name,
-          initialDataBytes,
-          openAfterCreated,
-          createNewView,
-        ) {
-          if (createNewView) {
-            createViewAndShowRenameDialogIfNeeded(
-              context,
-              _convertLayoutToHintText(pluginBuilder.layoutType!),
-              (viewName, _) {
-                if (viewName.isNotEmpty) {
-                  viewBloc.add(
-                    ViewEvent.createView(
-                      viewName,
-                      pluginBuilder.layoutType!,
-                      openAfterCreated: openAfterCreated,
-                      section: widget.spaceType.toViewSectionPB,
-                    ),
-                  );
-                }
-              },
-            );
-          }
-          viewBloc.add(
-            const ViewEvent.setIsExpanded(true),
-          );
-        },
+        onSelected: _onSelected,
       ),
     );
   }
 
+  void _onSelected(
+    PluginBuilder pluginBuilder,
+    String? name,
+    List<int>? initialDataBytes,
+    bool openAfterCreated,
+    bool createNewView,
+  ) {
+    final viewBloc = context.read<ViewBloc>();
+
+    if (createNewView) {
+      createViewAndShowRenameDialogIfNeeded(
+        context,
+        _convertLayoutToHintText(pluginBuilder.layoutType!),
+        (viewName, _) {
+          // the name of new document should be empty
+          if (pluginBuilder.layoutType == ViewLayoutPB.Document) {
+            viewName = '';
+          }
+          viewBloc.add(
+            ViewEvent.createView(
+              viewName,
+              pluginBuilder.layoutType!,
+              openAfterCreated: openAfterCreated,
+              section: widget.spaceType.toViewSectionPB,
+            ),
+          );
+        },
+      );
+    }
+
+    viewBloc.add(const ViewEvent.setIsExpanded(true));
+  }
+
   // ··· more action button
-  Widget _buildViewMoreActionButton(BuildContext context) {
-    return FlowyTooltip(
-      message: LocaleKeys.menuAppHeader_moreButtonToolTip.tr(),
-      child: ViewMoreActionButton(
+  Widget _buildViewMoreActionButton(
+    BuildContext context,
+    PopoverController controller,
+    Widget Function(PopoverController) buildChild,
+  ) {
+    return BlocProvider(
+      create: (context) => SpaceBloc(
+        userProfile: context.read<SpaceBloc>().userProfile,
+        workspaceId: context.read<SpaceBloc>().workspaceId,
+      )..add(const SpaceEvent.initial(openFirstPage: false)),
+      child: ViewMoreActionPopover(
         view: widget.view,
+        controller: controller,
         isExpanded: widget.isExpanded,
         spaceType: widget.spaceType,
         onEditing: (value) =>
             context.read<ViewBloc>().add(ViewEvent.setIsEditing(value)),
+        buildChild: buildChild,
         onAction: (action, data) async {
           switch (action) {
             case ViewMoreActionType.favorite:
@@ -723,17 +759,14 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
             case ViewMoreActionType.delete:
               // get if current page contains published child views
               final (containPublishedPage, _) =
-                  await ViewBackendService.containPublishedPage(
-                widget.view,
-              );
+                  await ViewBackendService.containPublishedPage(widget.view);
               if (containPublishedPage && context.mounted) {
                 await showConfirmDeletionDialog(
                   context: context,
                   name: widget.view.name,
                   description: LocaleKeys.publish_containsPublishedPage.tr(),
-                  onConfirm: () {
-                    context.read<ViewBloc>().add(const ViewEvent.delete());
-                  },
+                  onConfirm: () =>
+                      context.read<ViewBloc>().add(const ViewEvent.delete()),
                 );
               } else if (context.mounted) {
                 context.read<ViewBloc>().add(const ViewEvent.delete());
@@ -766,7 +799,7 @@ class _SingleInnerViewItemState extends State<SingleInnerViewItem> {
               }
               final space = value.$1;
               final target = value.$2;
-              _moveViewCrossSection(
+              moveViewCrossSpace(
                 context,
                 space,
                 widget.view,
@@ -827,7 +860,7 @@ bool isReferencedDatabaseView(ViewPB view, ViewPB? parentView) {
   return view.layout.isDatabaseView && parentView.layout.isDatabaseView;
 }
 
-void _moveViewCrossSection(
+void moveViewCrossSpace(
   BuildContext context,
   ViewPB? toSpace,
   ViewPB view,
@@ -844,13 +877,6 @@ void _moveViewCrossSection(
     return;
   }
 
-  final fromSection = spaceType == FolderSpaceType.public
-      ? ViewSectionPB.Private
-      : ViewSectionPB.Public;
-  final toSection = spaceType == FolderSpaceType.public
-      ? ViewSectionPB.Public
-      : ViewSectionPB.Private;
-
   final currentSpace = context.read<SpaceBloc>().state.currentSpace;
   if (currentSpace != null &&
       toSpace != null &&
@@ -861,19 +887,57 @@ void _moveViewCrossSection(
     context.read<ViewBloc>().add(const ViewEvent.unpublish(sync: false));
   }
 
-  context.read<ViewBloc>().add(
-        ViewEvent.move(
-          from,
-          toId,
-          null,
-          fromSection,
-          toSection,
+  context.read<ViewBloc>().add(ViewEvent.move(from, toId, null, null, null));
+}
+
+class ViewItemDefaultLeftIcon extends StatelessWidget {
+  const ViewItemDefaultLeftIcon({
+    super.key,
+    required this.view,
+    required this.parentView,
+    required this.isExpanded,
+    required this.leftPadding,
+    required this.isHovered,
+  });
+
+  final ViewPB view;
+  final ViewPB? parentView;
+  final bool isExpanded;
+  final double leftPadding;
+  final ValueNotifier<bool>? isHovered;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isReferencedDatabaseView(view, parentView)) {
+      return const _DotIconWidget();
+    }
+
+    if (context.read<ViewBloc>().state.view.childViews.isEmpty) {
+      return HSpace(leftPadding);
+    }
+
+    final child = FlowyHover(
+      child: GestureDetector(
+        child: FlowySvg(
+          isExpanded
+              ? FlowySvgs.view_item_expand_s
+              : FlowySvgs.view_item_unexpand_s,
+          size: const Size.square(16.0),
         ),
+        onTap: () =>
+            context.read<ViewBloc>().add(ViewEvent.setIsExpanded(!isExpanded)),
+      ),
+    );
+
+    if (isHovered != null) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: isHovered!,
+        builder: (_, isHovered, child) =>
+            Opacity(opacity: isHovered ? 1.0 : 0.0, child: child),
+        child: child,
       );
-  context.read<ViewBloc>().add(
-        ViewEvent.updateViewVisibility(
-          from,
-          spaceType == FolderSpaceType.public,
-        ),
-      );
+    }
+
+    return child;
+  }
 }

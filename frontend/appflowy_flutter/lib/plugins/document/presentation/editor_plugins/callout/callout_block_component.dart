@@ -8,6 +8,7 @@ import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 import '../base/emoji_picker_button.dart';
 
@@ -91,12 +92,9 @@ class CalloutBlockComponentBuilder extends BlockComponentBuilder {
     );
   }
 
-  // validate the data of the node, if the result is false, the node will be rendered as a placeholder
   @override
-  bool validate(Node node) =>
-      node.delta != null &&
-      node.children.isEmpty &&
-      node.attributes[CalloutBlockKeys.icon] is String;
+  BlockComponentValidate get validate =>
+      (node) => node.delta != null && node.children.isEmpty;
 }
 
 // the main widget for rendering the callout block
@@ -175,6 +173,7 @@ class _CalloutBlockComponentWidgetState
     final textDirection = calculateTextDirection(
       layoutDirection: Directionality.maybeOf(context),
     );
+    final (emojiSize, emojiButtonSize) = calculateEmojiSize();
 
     Widget child = Container(
       decoration: BoxDecoration(
@@ -189,22 +188,23 @@ class _CalloutBlockComponentWidgetState
         mainAxisSize: MainAxisSize.min,
         textDirection: textDirection,
         children: [
-          if (PlatformExtension.isDesktopOrWeb) const HSpace(4.0),
+          if (UniversalPlatform.isDesktopOrWeb) const HSpace(4.0),
           // the emoji picker button for the note
           EmojiPickerButton(
-            key: ValueKey(
-              emoji.toString(),
-            ), // force to refresh the popover state
+            // force to refresh the popover state
+            key: ValueKey(widget.node.id + emoji),
             enable: editorState.editable,
             title: '',
             emoji: emoji,
-            emojiSize: 15.0,
+            emojiSize: emojiSize,
+            showBorder: false,
+            buttonSize: emojiButtonSize,
             onSubmitted: (emoji, controller) {
               setEmoji(emoji);
               controller?.close();
             },
           ),
-          if (PlatformExtension.isDesktopOrWeb) const HSpace(4.0),
+          if (UniversalPlatform.isDesktopOrWeb) const HSpace(4.0),
           Flexible(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -277,5 +277,16 @@ class _CalloutBlockComponentWidgetState
         Position(path: node.path, offset: node.delta?.length ?? 0),
       );
     await editorState.apply(transaction);
+  }
+
+  (double, Size) calculateEmojiSize() {
+    const double defaultEmojiSize = 16.0;
+    const Size defaultEmojiButtonSize = Size(30.0, 30.0);
+    final double emojiSize =
+        editorState.editorStyle.textStyleConfiguration.text.fontSize ??
+            defaultEmojiSize;
+    final emojiButtonSize =
+        defaultEmojiButtonSize * emojiSize / defaultEmojiSize;
+    return (emojiSize, emojiButtonSize);
   }
 }

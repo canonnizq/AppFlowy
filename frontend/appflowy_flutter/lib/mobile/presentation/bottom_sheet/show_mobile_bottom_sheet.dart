@@ -48,12 +48,14 @@ Future<T?> showMobileBottomSheet<T>(
   double? elevation,
   bool showDoneButton = false,
   bool enableDraggableScrollable = false,
+  bool enableScrollable = false,
   // this field is only used if showDragHandle is true
   Widget Function(BuildContext, ScrollController)? scrollableWidgetBuilder,
   // only used when enableDraggableScrollable is true
   double minChildSize = 0.5,
   double maxChildSize = 0.8,
   double initialChildSize = 0.51,
+  double bottomSheetPadding = 0,
 }) async {
   assert(
     showHeader ||
@@ -141,6 +143,7 @@ Future<T?> showMobileBottomSheet<T>(
                     ) ??
                     Expanded(
                       child: Scrollbar(
+                        controller: scrollController,
                         child: SingleChildScrollView(
                           controller: scrollController,
                           child: child,
@@ -150,6 +153,19 @@ Future<T?> showMobileBottomSheet<T>(
               ],
             );
           },
+        );
+      } else if (enableScrollable) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...children,
+            Flexible(
+              child: SingleChildScrollView(
+                child: child,
+              ),
+            ),
+            VSpace(bottomSheetPadding),
+          ],
         );
       }
 

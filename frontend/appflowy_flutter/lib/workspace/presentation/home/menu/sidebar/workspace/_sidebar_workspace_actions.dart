@@ -6,7 +6,6 @@ import 'package:appflowy/workspace/presentation/settings/widgets/members/workspa
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy/workspace/presentation/widgets/pop_up_action.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
@@ -73,7 +72,11 @@ class _WorkspaceMoreActionWrapper extends CustomActionCell {
   final UserWorkspacePB workspace;
 
   @override
-  Widget buildWithContext(BuildContext context, PopoverController controller) {
+  Widget buildWithContext(
+    BuildContext context,
+    PopoverController controller,
+    PopoverMutex? mutex,
+  ) {
     if (inner == WorkspaceMoreAction.divider) {
       return const Divider();
     }

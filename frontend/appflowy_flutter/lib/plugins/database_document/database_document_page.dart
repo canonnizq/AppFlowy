@@ -1,7 +1,11 @@
+import 'package:appflowy/plugins/document/presentation/editor_drop_handler.dart';
+import 'package:flutter/material.dart';
+
 import 'package:appflowy/plugins/database/application/row/related_row_detail_bloc.dart';
 import 'package:appflowy/plugins/database/grid/application/row/row_detail_bloc.dart';
 import 'package:appflowy/plugins/database/grid/presentation/widgets/common/type_option_separator.dart';
 import 'package:appflowy/plugins/database/widgets/cell/editable_cell_builder.dart';
+import 'package:appflowy/plugins/database/widgets/row/row_banner.dart';
 import 'package:appflowy/plugins/database/widgets/row/row_property.dart';
 import 'package:appflowy/plugins/document/application/document_bloc.dart';
 import 'package:appflowy/plugins/document/presentation/banner.dart';
@@ -14,8 +18,7 @@ import 'package:appflowy/workspace/application/action_navigation/action_navigati
 import 'package:appflowy/workspace/application/action_navigation/navigation_action.dart';
 import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/protobuf.dart';
-import 'package:appflowy_editor/appflowy_editor.dart' hide Log;
-import 'package:flutter/material.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 // This widget is largely copied from `plugins/document/document_page.dart` intentionally instead of opting for an abstraction. We can make an abstraction after the view refactor is done and there's more clarity in that department.
@@ -103,16 +106,20 @@ class _DatabaseDocumentPageState extends State<DatabaseDocumentPage> {
   }
 
   Widget _buildEditorPage(BuildContext context, DocumentState state) {
-    final appflowyEditorPage = AppFlowyEditorPage(
+    final appflowyEditorPage = EditorDropHandler(
+      viewId: widget.view.id,
       editorState: state.editorState!,
-      styleCustomizer: EditorStyleCustomizer(
-        context: context,
-        // the 44 is the width of the left action list
-        padding: EditorStyleCustomizer.documentPadding,
+      isLocalMode: context.read<DocumentBloc>().isLocalMode,
+      child: AppFlowyEditorPage(
+        editorState: state.editorState!,
+        styleCustomizer: EditorStyleCustomizer(
+          context: context,
+          padding: EditorStyleCustomizer.documentPadding,
+        ),
+        header: _buildDatabaseDataContent(context, state.editorState!),
+        initialSelection: widget.initialSelection,
+        useViewInfoBloc: false,
       ),
-      header: _buildDatabaseDataContent(context, state.editorState!),
-      initialSelection: widget.initialSelection,
-      useViewInfoBloc: false,
     );
 
     return Column(
@@ -137,29 +144,39 @@ class _DatabaseDocumentPageState extends State<DatabaseDocumentPage> {
           return state.when(
             loading: () => const SizedBox.shrink(),
             ready: (databaseController, rowController) {
+              final padding = EditorStyleCustomizer.documentPadding;
               return BlocProvider(
                 create: (context) => RowDetailBloc(
                   fieldController: databaseController.fieldController,
                   rowController: rowController,
                 ),
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    top: 24,
-                    left: EditorStyleCustomizer.documentPadding.left + 16 + 6,
-                    right: EditorStyleCustomizer.documentPadding.right,
-                  ),
-                  child: Column(
-                    children: [
-                      RowPropertyList(
+                child: Column(
+                  children: [
+                    RowBanner(
+                      databaseController: databaseController,
+                      rowController: rowController,
+                      cellBuilder: EditableCellBuilder(
+                        databaseController: databaseController,
+                      ),
+                      userProfile:
+                          context.read<RelatedRowDetailPageBloc>().userProfile,
+                    ),
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: 24,
+                        left: padding.left,
+                        right: padding.right,
+                      ),
+                      child: RowPropertyList(
                         viewId: databaseController.viewId,
                         fieldController: databaseController.fieldController,
                         cellBuilder: EditableCellBuilder(
                           databaseController: databaseController,
                         ),
                       ),
-                      const TypeOptionSeparator(spacing: 24.0),
-                    ],
-                  ),
+                    ),
+                    const TypeOptionSeparator(spacing: 24.0),
+                  ],
                 ),
               );
             },
@@ -171,6 +188,7 @@ class _DatabaseDocumentPageState extends State<DatabaseDocumentPage> {
 
   Widget _buildBanner(BuildContext context) {
     return DocumentBanner(
+      viewName: widget.view.name,
       onRestore: () => context.read<DocumentBloc>().add(
             const DocumentEvent.restorePage(),
           ),

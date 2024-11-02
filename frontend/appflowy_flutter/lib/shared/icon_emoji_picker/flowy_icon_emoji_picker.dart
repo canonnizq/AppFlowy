@@ -3,10 +3,10 @@ import 'package:appflowy/plugins/base/emoji/emoji_picker.dart';
 import 'package:appflowy/shared/icon_emoji_picker/icon_picker.dart';
 import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/icon.pbenum.dart';
-import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart' hide Icon;
+import 'package:universal_platform/universal_platform.dart';
 
 import 'icon.dart';
 
@@ -50,12 +50,14 @@ class FlowyIconEmojiPicker extends StatefulWidget {
     super.key,
     this.onSelectedEmoji,
     this.onSelectedIcon,
+    this.enableBackgroundColorSelection = true,
     this.tabs = const [PickerTabType.emoji],
   });
 
   final void Function(EmojiPickerResult result)? onSelectedEmoji;
   final void Function(IconGroup? group, Icon? icon, String? color)?
       onSelectedIcon;
+  final bool enableBackgroundColorSelection;
   final List<PickerTabType> tabs;
 
   @override
@@ -136,7 +138,7 @@ class _FlowyIconEmojiPickerState extends State<FlowyIconEmojiPicker>
   }
 
   int _getEmojiPerLine(BuildContext context) {
-    if (PlatformExtension.isDesktopOrWeb) {
+    if (UniversalPlatform.isDesktopOrWeb) {
       return 9;
     }
     final width = MediaQuery.of(context).size.width;
@@ -145,8 +147,8 @@ class _FlowyIconEmojiPickerState extends State<FlowyIconEmojiPicker>
 
   Widget _buildIconPicker() {
     return FlowyIconPicker(
+      enableBackgroundColorSelection: widget.enableBackgroundColorSelection,
       onSelectedIcon: (iconGroup, icon, color) {
-        debugPrint('icon: ${icon.toJson()}, color: $color');
         widget.onSelectedIcon?.call(iconGroup, icon, color);
       },
     );

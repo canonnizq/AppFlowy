@@ -74,6 +74,62 @@ final heading3SlashMenuItem = SelectionMenuItem(
   },
 );
 
+// toggle heading 1 menu item
+// heading 1 - 3 menu items
+final toggleHeading1SlashMenuItem = SelectionMenuItem(
+  // todo: i18n
+  getName: () => LocaleKeys.document_slashMenu_name_toggleHeading1.tr(),
+  nameBuilder: _slashMenuItemNameBuilder,
+  icon: (editorState, isSelected, style) => SelectableSvgWidget(
+    data: FlowySvgs.slash_menu_icon_h1_s,
+    isSelected: isSelected,
+    style: style,
+  ),
+  keywords: ['toggle heading 1', 'toggle h1', 'toggle heading1'],
+  handler: (editorState, _, __) {
+    insertNodeAfterSelection(
+      editorState,
+      toggleHeadingNode(),
+    );
+  },
+);
+
+final toggleHeading2SlashMenuItem = SelectionMenuItem(
+  // todo: i18n
+  getName: () => LocaleKeys.document_slashMenu_name_toggleHeading2.tr(),
+  nameBuilder: _slashMenuItemNameBuilder,
+  icon: (editorState, isSelected, style) => SelectableSvgWidget(
+    data: FlowySvgs.slash_menu_icon_h2_s,
+    isSelected: isSelected,
+    style: style,
+  ),
+  keywords: ['toggle heading 2', 'toggle h2', 'toggle heading2'],
+  handler: (editorState, _, __) {
+    insertNodeAfterSelection(
+      editorState,
+      toggleHeadingNode(level: 2),
+    );
+  },
+);
+
+final toggleHeading3SlashMenuItem = SelectionMenuItem(
+  // todo: i18n
+  getName: () => LocaleKeys.document_slashMenu_name_toggleHeading3.tr(),
+  nameBuilder: _slashMenuItemNameBuilder,
+  icon: (editorState, isSelected, style) => SelectableSvgWidget(
+    data: FlowySvgs.slash_menu_icon_h3_s,
+    isSelected: isSelected,
+    style: style,
+  ),
+  keywords: ['toggle heading 3', 'toggle h3', 'toggle heading3'],
+  handler: (editorState, _, __) {
+    insertNodeAfterSelection(
+      editorState,
+      toggleHeadingNode(level: 3),
+    );
+  },
+);
+
 // image menu item
 final imageSlashMenuItem = SelectionMenuItem(
   getName: () => LocaleKeys.document_slashMenu_name_image.tr(),
@@ -269,12 +325,19 @@ final referencedDocSlashMenuItem = SelectionMenuItem(
     'notes',
     'referenced page',
     'referenced document',
+    'referenced database',
+    'link to database',
+    'link to document',
     'link to page',
+    'link to grid',
+    'link to board',
+    'link to calendar',
   ],
   handler: (editorState, menuService, context) => showLinkToPageMenu(
     editorState,
     menuService,
-    ViewLayoutPB.Document,
+    // enable database and document references
+    insertPage: false,
   ),
 );
 
@@ -288,8 +351,11 @@ SelectionMenuItem referencedGridSlashMenuItem = SelectionMenuItem(
     style: style,
   ),
   keywords: ['referenced', 'grid', 'database', 'linked'],
-  handler: (editorState, menuService, context) =>
-      showLinkToPageMenu(editorState, menuService, ViewLayoutPB.Grid),
+  handler: (editorState, menuService, context) => showLinkToPageMenu(
+    editorState,
+    menuService,
+    pageType: ViewLayoutPB.Grid,
+  ),
 );
 
 SelectionMenuItem referencedKanbanSlashMenuItem = SelectionMenuItem(
@@ -301,8 +367,11 @@ SelectionMenuItem referencedKanbanSlashMenuItem = SelectionMenuItem(
     style: style,
   ),
   keywords: ['referenced', 'board', 'kanban', 'linked'],
-  handler: (editorState, menuService, context) =>
-      showLinkToPageMenu(editorState, menuService, ViewLayoutPB.Board),
+  handler: (editorState, menuService, context) => showLinkToPageMenu(
+    editorState,
+    menuService,
+    pageType: ViewLayoutPB.Board,
+  ),
 );
 
 SelectionMenuItem referencedCalendarSlashMenuItem = SelectionMenuItem(
@@ -314,8 +383,11 @@ SelectionMenuItem referencedCalendarSlashMenuItem = SelectionMenuItem(
     style: style,
   ),
   keywords: ['referenced', 'calendar', 'database', 'linked'],
-  handler: (editorState, menuService, context) =>
-      showLinkToPageMenu(editorState, menuService, ViewLayoutPB.Calendar),
+  handler: (editorState, menuService, context) => showLinkToPageMenu(
+    editorState,
+    menuService,
+    pageType: ViewLayoutPB.Calendar,
+  ),
 );
 
 // callout menu item
@@ -541,7 +613,38 @@ SelectionMenuItem fileSlashMenuItem = SelectionMenuItem(
     style: style,
   ),
   keywords: ['file upload', 'pdf', 'zip', 'archive', 'upload', 'attachment'],
-  handler: (editorState, _, __) async => editorState.insertEmptyFileBlock(),
+  handler: (editorState, _, __) async {
+    final fileGlobalKey = GlobalKey<FileBlockComponentState>();
+    await editorState.insertEmptyFileBlock(fileGlobalKey);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      fileGlobalKey.currentState?.controller.show();
+    });
+  },
+);
+
+// Sub-page menu item
+SelectionMenuItem subPageSlashMenuItem = SelectionMenuItem.node(
+  getName: () => LocaleKeys.document_slashMenu_subPage_name.tr(),
+  nameBuilder: _slashMenuItemNameBuilder,
+  iconBuilder: (_, isSelected, style) => SelectableSvgWidget(
+    data: FlowySvgs.insert_document_s,
+    isSelected: isSelected,
+    style: style,
+  ),
+  keywords: [
+    LocaleKeys.document_slashMenu_subPage_keyword1.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword2.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword3.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword4.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword5.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword6.tr(),
+    LocaleKeys.document_slashMenu_subPage_keyword7.tr(),
+  ],
+  updateSelection: (_, path, __, ___) =>
+      Selection.collapsed(Position(path: path)),
+  replace: (_, node) => node.delta?.isEmpty ?? false,
+  nodeBuilder: (_, __) => subPageNode(),
 );
 
 Widget _slashMenuItemNameBuilder(

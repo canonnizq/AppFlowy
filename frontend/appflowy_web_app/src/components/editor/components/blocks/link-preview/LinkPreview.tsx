@@ -39,13 +39,14 @@ export const LinkPreview = memo(
         onClick={() => {
           window.open(url, '_blank');
         }}
+        contentEditable={false}
         {...attributes}
         ref={ref}
         className={`link-preview-block relative w-full cursor-pointer py-1`}
       >
         <div
           className={
-            'container-bg flex w-full cursor-pointer select-none items-center gap-4 overflow-hidden rounded border border-line-divider bg-fill-list-active p-3'
+            'container-bg flex w-full cursor-pointer select-none items-center gap-4 overflow-hidden rounded-[8px] border border-line-divider bg-fill-list-active p-3'
           }
         >
           {notFound ? (
@@ -80,11 +81,14 @@ export const LinkPreview = memo(
             </>
           )}
         </div>
-        <div ref={ref} className={'absolute left-0 top-0 h-full w-full caret-transparent'}>
+        <div
+          ref={ref}
+          className={'absolute left-0 top-0 h-full w-full caret-transparent'}
+        >
           {children}
         </div>
       </div>
     );
-  })
-);
+  }),
+  (prev, next) => prev.node.data.url === next.node.data.url);
 export default LinkPreview;

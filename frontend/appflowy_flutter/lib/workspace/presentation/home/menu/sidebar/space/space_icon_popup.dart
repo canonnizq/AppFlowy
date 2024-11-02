@@ -7,7 +7,6 @@ import 'package:appflowy/shared/icon_emoji_picker/icon_picker.dart';
 import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/space_icon.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart' hide Icon;
@@ -74,7 +73,7 @@ class _SpaceIconPopupState extends State<SpaceIconPopup> {
   Widget build(BuildContext context) {
     return AppFlowyPopover(
       offset: const Offset(0, 4),
-      constraints: BoxConstraints.loose(const Size(380, 432)),
+      constraints: BoxConstraints.loose(const Size(360, 432)),
       margin: const EdgeInsets.all(0),
       direction: PopoverDirection.bottomWithCenterAligned,
       child: _buildPreview(),

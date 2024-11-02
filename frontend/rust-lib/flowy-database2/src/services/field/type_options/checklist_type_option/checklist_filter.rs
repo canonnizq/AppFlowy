@@ -1,4 +1,4 @@
-use collab_database::entity::SelectOption;
+use collab_database::fields::select_type_option::SelectOption;
 use collab_database::fields::Field;
 use collab_database::rows::Cell;
 
@@ -43,7 +43,7 @@ impl ChecklistFilterPB {
 }
 
 impl PreFillCellsWithFilter for ChecklistFilterPB {
-  fn get_compliant_cell(&self, _field: &Field) -> (Option<Cell>, bool) {
-    (None, true)
+  fn get_compliant_cell(&self, _field: &Field) -> Option<Cell> {
+    None
   }
 }

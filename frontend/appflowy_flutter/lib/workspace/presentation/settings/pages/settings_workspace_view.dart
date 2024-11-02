@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/document/application/document_appearance_cubit.dart';
+import 'package:appflowy/plugins/document/presentation/editor_style.dart';
 import 'package:appflowy/shared/af_role_pb_extension.dart';
 import 'package:appflowy/shared/google_fonts_extension.dart';
 import 'package:appflowy/util/font_family_extension.dart';
@@ -34,7 +35,6 @@ import 'package:appflowy/workspace/presentation/settings/widgets/theme_upload/th
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy/workspace/presentation/widgets/toggle/toggle.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/language.dart';
 import 'package:flowy_infra/plugins/bloc/dynamic_plugin_bloc.dart';
@@ -125,6 +125,7 @@ class SettingsWorkspaceView extends StatelessWidget {
                   _ThemeDropdown(),
                   _DocumentCursorColorSetting(),
                   _DocumentSelectionColorSetting(),
+                  DocumentPaddingSetting(),
                 ],
               ),
               const SettingsCategorySpacer(),
@@ -344,20 +345,18 @@ class _WorkspaceIconSetting extends StatelessWidget {
       );
     }
 
-    return Container(
+    return SizedBox(
       height: 64,
       width: 64,
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-        borderRadius: BorderRadius.circular(8),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(1),
         child: WorkspaceIcon(
           workspace: workspace!,
-          iconSize: workspace!.icon.isNotEmpty == true ? 46 : 20,
-          fontSize: 16.0,
-          figmaLineHeight: 46,
+          iconSize: 36,
+          emojiSize: 24.0,
+          fontSize: 24.0,
+          figmaLineHeight: 26.0,
+          borderRadius: 18.0,
           enableEdit: true,
           onSelected: (r) => context
               .read<WorkspaceSettingsBloc>()
@@ -437,7 +436,7 @@ class EnableRTLItemsSwitcher extends StatelessWidget {
               .enableRtlToolbarItems,
           onChanged: (value) => context
               .read<AppearanceSettingsCubit>()
-              .setEnableRTLToolbarItems(!value),
+              .setEnableRTLToolbarItems(value),
         ),
       ],
     );
@@ -582,8 +581,8 @@ class _TimeFormatSwitcher extends StatelessWidget {
           onChanged: (value) =>
               context.read<AppearanceSettingsCubit>().setTimeFormat(
                     value
-                        ? UserTimeFormatPB.TwelveHour
-                        : UserTimeFormatPB.TwentyFourHour,
+                        ? UserTimeFormatPB.TwentyFourHour
+                        : UserTimeFormatPB.TwelveHour,
                   ),
         ),
       ],
@@ -626,7 +625,7 @@ class _ThemeDropdown extends StatelessWidget {
                     ),
                   ),
                 ).then((val) {
-                  if (val != null) {
+                  if (val != null && context.mounted) {
                     showSnackBarMessage(
                       context,
                       LocaleKeys.settings_appearance_themeUpload_uploadSuccess
@@ -1070,15 +1069,16 @@ class _FontListPopupState extends State<_FontListPopup> {
             child: ListView.separated(
               shrinkWrap: _filteredOptions.length < 10,
               controller: widget.scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               itemCount: _filteredOptions.length,
-              separatorBuilder: (_, __) => const VSpace(4),
+              separatorBuilder: (_, __) => const VSpace(6),
               itemBuilder: (context, index) {
                 final font = _filteredOptions[index];
                 final isSelected = widget.currentFont == font;
                 return SizedBox(
-                  height: 28,
+                  height: 29,
                   child: ListTile(
+                    minVerticalPadding: 0,
                     selected: isSelected,
                     dense: true,
                     hoverColor: Theme.of(context)
@@ -1087,8 +1087,9 @@ class _FontListPopupState extends State<_FontListPopup> {
                         .withOpacity(0.12),
                     selectedTileColor:
                         Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-                    minTileHeight: 28,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    minTileHeight: 0,
                     onTap: () {
                       context
                           .read<AppearanceSettingsCubit>()
@@ -1102,11 +1103,14 @@ class _FontListPopupState extends State<_FontListPopup> {
 
                       widget.controller.close();
                     },
-                    title: Text(
-                      font.fontFamilyDisplayName,
-                      style: TextStyle(
-                        color: AFThemeExtension.of(context).textColor,
-                        fontFamily: getGoogleFontSafely(font).fontFamily,
+                    title: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        font.fontFamilyDisplayName,
+                        style: TextStyle(
+                          color: AFThemeExtension.of(context).textColor,
+                          fontFamily: getGoogleFontSafely(font).fontFamily,
+                        ),
                       ),
                     ),
                     trailing:
@@ -1263,6 +1267,102 @@ class _SelectionColorValueWidget extends StatelessWidget {
           color: textColor,
         ),
       ],
+    );
+  }
+}
+
+class DocumentPaddingSetting extends StatelessWidget {
+  const DocumentPaddingSetting({
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<DocumentAppearanceCubit, DocumentAppearance>(
+      builder: (context, state) {
+        return Column(
+          children: [
+            Row(
+              children: [
+                FlowyText.medium(
+                  LocaleKeys.settings_appearance_documentSettings_width.tr(),
+                ),
+                const Spacer(),
+                SettingsResetButton(
+                  onResetRequested: () =>
+                      context.read<DocumentAppearanceCubit>().syncWidth(null),
+                ),
+              ],
+            ),
+            const VSpace(6),
+            Container(
+              height: 32,
+              padding: const EdgeInsets.only(right: 4),
+              child: _DocumentPaddingSlider(
+                onPaddingChanged: (value) {
+                  context.read<DocumentAppearanceCubit>().syncWidth(value);
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DocumentPaddingSlider extends StatefulWidget {
+  const _DocumentPaddingSlider({
+    required this.onPaddingChanged,
+  });
+
+  final void Function(double) onPaddingChanged;
+
+  @override
+  State<_DocumentPaddingSlider> createState() => _DocumentPaddingSliderState();
+}
+
+class _DocumentPaddingSliderState extends State<_DocumentPaddingSlider> {
+  late double width;
+
+  @override
+  void initState() {
+    super.initState();
+
+    width = context.read<DocumentAppearanceCubit>().state.width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<DocumentAppearanceCubit, DocumentAppearance>(
+      builder: (context, state) {
+        if (state.width != width) {
+          width = state.width;
+        }
+        return SliderTheme(
+          data: Theme.of(context).sliderTheme.copyWith(
+                showValueIndicator: ShowValueIndicator.never,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 8,
+                ),
+                overlayShape: SliderComponentShape.noThumb,
+              ),
+          child: Slider(
+            value: width.clamp(
+              EditorStyleCustomizer.minDocumentWidth,
+              EditorStyleCustomizer.maxDocumentWidth,
+            ),
+            min: EditorStyleCustomizer.minDocumentWidth,
+            max: EditorStyleCustomizer.maxDocumentWidth,
+            divisions: 10,
+            onChanged: (value) {
+              setState(() => width = value);
+
+              widget.onPaddingChanged(value);
+            },
+          ),
+        );
+      },
     );
   }
 }

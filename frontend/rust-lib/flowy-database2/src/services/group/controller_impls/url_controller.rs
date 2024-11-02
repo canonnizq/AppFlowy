@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use collab_database::fields::url_type_option::{URLCellData, URLTypeOption};
 use collab_database::fields::{Field, TypeOptionData};
 use collab_database::rows::{new_cell_builder, Cell, Cells, Row};
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,7 @@ use crate::entities::{
   FieldType, GroupPB, GroupRowsNotificationPB, InsertedGroupPB, InsertedRowPB, RowMetaPB,
 };
 use crate::services::cell::insert_url_cell;
-use crate::services::field::{TypeOption, URLCellData, URLCellDataParser, URLTypeOption};
+use crate::services::field::{TypeOption, URLCellDataParser};
 use crate::services::group::action::GroupCustomize;
 use crate::services::group::configuration::GroupControllerContext;
 use crate::services::group::controller::BaseGroupController;
@@ -98,7 +99,7 @@ impl GroupCustomize for URLGroupController {
         if !group.contains_row(&row.id) {
           changeset
             .inserted_rows
-            .push(InsertedRowPB::new(RowMetaPB::from(row.clone())));
+            .push(InsertedRowPB::new(RowMetaPB::from(row)));
           group.add_row(row.clone());
         }
       } else if group.contains_row(&row.id) {
@@ -154,7 +155,7 @@ impl GroupCustomize for URLGroupController {
     group_changeset
   }
 
-  fn delete_group_when_move_row(
+  fn delete_group_after_moving_row(
     &mut self,
     _row: &Row,
     cell_data: &<Self::GroupTypeOption as TypeOption>::CellProtobufType,

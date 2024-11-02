@@ -1,13 +1,12 @@
 import { ReactComponent as ExpandMoreIcon } from '$icons/16x/full_view.svg';
-import { ViewMeta } from '@/application/db/tables/view_metas';
-import { useEditorContext } from '@/components/editor/EditorContext';
+import { BlockType, View, YDoc } from '@/application/types';
 import { Database } from '@/components/database';
 import { DatabaseNode, EditorElementProps } from '@/components/editor/editor.type';
+import { EditorVariant, useEditorContext } from '@/components/editor/EditorContext';
 import { Tooltip } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
-import React, { forwardRef, memo, useEffect, useMemo, useState } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BlockType, YDoc } from '@/application/collab.type';
 
 export const DatabaseBlock = memo(
   forwardRef<HTMLDivElement, EditorElementProps<DatabaseNode>>(({ node, children, ...attributes }, ref) => {
@@ -16,8 +15,9 @@ export const DatabaseBlock = memo(
     const type = node.type;
     const navigateToView = useEditorContext()?.navigateToView;
     const loadView = useEditorContext()?.loadView;
-    const getViewRowsMap = useEditorContext()?.getViewRowsMap;
+    const createRowDoc = useEditorContext()?.createRowDoc;
     const loadViewMeta = useEditorContext()?.loadViewMeta;
+    const variant = useEditorContext()?.variant;
 
     const [notFound, setNotFound] = useState(false);
     const [doc, setDoc] = useState<YDoc | null>(null);
@@ -58,16 +58,22 @@ export const DatabaseBlock = memo(
       })();
     }, [viewId, loadView]);
 
-    const [selectedViewId, setSelectedViewId] = useState<string>();
+    const [selectedViewId, setSelectedViewId] = useState<string>(viewId);
     const [visibleViewIds, setVisibleViewIds] = useState<string[]>([]);
     const [iidName, setIidName] = useState<string>('');
 
     useEffect(() => {
-      const updateVisibleViewIds = async (meta: ViewMeta) => {
-        const viewIds = meta.visible_view_ids || [];
+      const updateVisibleViewIds = async (meta: View | null) => {
+        if (!meta) {
+          return;
+        }
+
+        const viewIds = meta.children.map((v) => v.view_id) || [];
+
+        viewIds.unshift(meta.view_id);
 
         if (!viewIds.includes(viewId)) {
-          setSelectedViewId(meta.visible_view_ids[0]);
+          setSelectedViewId(viewIds[0]);
         } else {
           setSelectedViewId(viewId);
         }
@@ -89,35 +95,56 @@ export const DatabaseBlock = memo(
       })();
     }, [loadViewMeta, viewId]);
 
+    const handleNavigateToRow = useCallback(
+      (rowId: string) => {
+        if (!viewId || variant !== 'app') return;
+        window.open(`${window.origin}/app/${viewId}?r=${rowId}`, '_blank');
+      },
+      [variant, viewId],
+    );
+
     return (
       <>
         <div
           {...attributes}
+          contentEditable={false}
           className={`relative w-full cursor-pointer py-2`}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
         >
-          <div ref={ref} className={'absolute left-0 top-0 h-full w-full caret-transparent'}>
+          <div
+            ref={ref}
+            className={'absolute left-0 top-0 h-full w-full caret-transparent'}
+          >
             {children}
           </div>
-          <div contentEditable={false} style={style} className={`container-bg relative flex w-full flex-col`}>
+          <div
+            contentEditable={false}
+            style={style}
+            className={`container-bg appflowy-scroller overflow-y-auto overflow-x-hidden relative flex w-full flex-col`}
+          >
             {selectedViewId && doc ? (
               <>
                 <Database
                   doc={doc}
                   iidIndex={viewId}
                   viewId={selectedViewId}
-                  getViewRowsMap={getViewRowsMap}
+                  createRowDoc={createRowDoc}
                   loadView={loadView}
                   navigateToView={navigateToView}
+                  onOpenRow={variant === 'app' ? handleNavigateToRow : undefined}
                   loadViewMeta={loadViewMeta}
                   iidName={iidName}
                   visibleViewIds={visibleViewIds}
                   onChangeView={setSelectedViewId}
+                  hideConditions={variant === EditorVariant.publish}
                 />
                 {isHovering && (
                   <div className={'absolute right-4 top-1'}>
-                    <Tooltip placement={'bottom'} title={t('tooltip.openAsPage')}>
+                    <Tooltip
+                      placement={'bottom'}
+                      title={t('tooltip.openAsPage')}
+                    >
                       <button
                         color={'primary'}
                         className={'rounded border border-line-divider bg-bg-body p-1 hover:bg-fill-list-hover'}
@@ -151,7 +178,7 @@ export const DatabaseBlock = memo(
       </>
     );
   }),
-  (prevProps, nextProps) => prevProps.node.data.view_id === nextProps.node.data.view_id
+  (prevProps, nextProps) => prevProps.node.data.view_id === nextProps.node.data.view_id,
 );
 
 export default DatabaseBlock;

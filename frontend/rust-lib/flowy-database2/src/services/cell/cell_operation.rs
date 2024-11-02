@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use collab_database::fields::media_type_option::MediaCellData;
+use collab_database::fields::select_type_option::SelectOptionIds;
 use collab_database::fields::Field;
 use collab_database::rows::{get_field_type_from_cell, Cell, Cells};
 
@@ -170,13 +172,13 @@ pub fn insert_checkbox_cell(is_checked: bool, field: &Field) -> Cell {
 
 pub fn insert_date_cell(
   timestamp: i64,
-  time: Option<String>,
+  end_timestamp: Option<i64>,
   include_time: Option<bool>,
   field: &Field,
 ) -> Cell {
   let cell_data = DateCellChangeset {
-    date: Some(timestamp),
-    time,
+    timestamp: Some(timestamp),
+    end_timestamp,
     include_time,
     ..Default::default()
   };
@@ -188,9 +190,12 @@ pub fn insert_select_option_cell(option_ids: Vec<String>, field: &Field) -> Cell
   apply_cell_changeset(BoxAny::new(changeset), None, field, None).unwrap()
 }
 
-pub fn insert_checklist_cell(insert_options: Vec<(String, bool)>, field: &Field) -> Cell {
+pub fn insert_checklist_cell(
+  insert_options: Vec<ChecklistCellInsertChangeset>,
+  field: &Field,
+) -> Cell {
   let changeset = ChecklistCellChangeset {
-    insert_options,
+    insert_tasks: insert_options,
     ..Default::default()
   };
   apply_cell_changeset(BoxAny::new(changeset), None, field, None).unwrap()
@@ -260,7 +265,7 @@ impl<'a> CellBuilder<'a> {
             cells.insert(field_id, (&RelationCellData::from(cell_str)).into());
           },
           FieldType::Media => {
-            cells.insert(field_id, (&MediaCellData::from(cell_str)).into());
+            cells.insert(field_id, MediaCellData::from(cell_str).into());
           },
         }
       }
@@ -317,19 +322,13 @@ impl<'a> CellBuilder<'a> {
     }
   }
 
-  pub fn insert_date_cell(
-    &mut self,
-    field_id: &str,
-    timestamp: i64,
-    time: Option<String>,
-    include_time: Option<bool>,
-  ) {
+  pub fn insert_date_cell(&mut self, field_id: &str, timestamp: i64, include_time: Option<bool>) {
     match self.field_maps.get(&field_id.to_owned()) {
       None => tracing::warn!("Can't find the date field with id: {}", field_id),
       Some(field) => {
         self.cells.insert(
           field_id.to_owned(),
-          insert_date_cell(timestamp, time, include_time, field),
+          insert_date_cell(timestamp, None, include_time, field),
         );
       },
     }
@@ -346,13 +345,17 @@ impl<'a> CellBuilder<'a> {
       },
     }
   }
-  pub fn insert_checklist_cell(&mut self, field_id: &str, options: Vec<(String, bool)>) {
+  pub fn insert_checklist_cell(
+    &mut self,
+    field_id: &str,
+    new_tasks: Vec<ChecklistCellInsertChangeset>,
+  ) {
     match self.field_maps.get(&field_id.to_owned()) {
       None => tracing::warn!("Can't find the field with id: {}", field_id),
       Some(field) => {
         self
           .cells
-          .insert(field_id.to_owned(), insert_checklist_cell(options, field));
+          .insert(field_id.to_owned(), insert_checklist_cell(new_tasks, field));
       },
     }
   }

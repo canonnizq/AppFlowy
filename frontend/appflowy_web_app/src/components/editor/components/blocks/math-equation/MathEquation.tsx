@@ -4,7 +4,7 @@ import RightTopActionsToolbar from '@/components/editor/components/block-actions
 import { EditorElementProps, MathEquationNode } from '@/components/editor/editor.type';
 import { copyTextToClipboard } from '@/utils/copy';
 import { ReactComponent as MathSvg } from '@/assets/math.svg';
-import React, { forwardRef, memo, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, memo, Suspense, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const MathEquation = memo(
@@ -17,7 +17,7 @@ export const MathEquation = memo(
       const newClassName = useMemo(() => {
         const classList = [
           className,
-          'math-equation-block relative w-full container-bg w-full py-1  select-none rounded',
+          'math-equation-block relative w-full container-bg w-full py-1 overflow-hidden select-none rounded-[8px]',
         ];
 
         if (formula) {
@@ -41,11 +41,13 @@ export const MathEquation = memo(
             className={newClassName}
           >
             {formula ? (
-              <KatexMath latex={formula} />
+              <Suspense fallback={formula}>
+                <KatexMath latex={formula} />
+              </Suspense>
             ) : (
               <div
                 className={
-                  'flex h-[48px] w-full items-center gap-[10px] rounded border border-line-divider bg-fill-list-active px-4 text-text-caption'
+                  'flex h-[48px] w-full items-center gap-[10px] rounded-[8px] border border-line-divider bg-fill-list-active px-4 text-text-caption'
                 }
               >
                 <MathSvg className={'h-4 w-4'} />
@@ -71,9 +73,9 @@ export const MathEquation = memo(
           </div>
         </>
       );
-    }
+    },
   ),
-  (prevProps, nextProps) => JSON.stringify(prevProps.node) === JSON.stringify(nextProps.node)
+  (prevProps, nextProps) => JSON.stringify(prevProps.node) === JSON.stringify(nextProps.node),
 );
 
 export default MathEquation;

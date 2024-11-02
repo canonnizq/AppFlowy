@@ -35,6 +35,7 @@ class KVKeys {
       'kDocumentAppearanceCursorColor';
   static const String kDocumentAppearanceSelectionColor =
       'kDocumentAppearanceSelectionColor';
+  static const String kDocumentAppearanceWidth = 'kDocumentAppearanceWidth';
 
   /// The key for saving the expanded views
   ///
@@ -56,8 +57,6 @@ class KVKeys {
 
   static const String kCloudType = 'kCloudType';
   static const String kAppflowyCloudBaseURL = 'kAppFlowyCloudBaseURL';
-  static const String kSupabaseURL = 'kSupabaseURL';
-  static const String kSupabaseAnonKey = 'kSupabaseAnonKey';
 
   /// The key for saving the text scale factor.
   ///

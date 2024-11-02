@@ -1,14 +1,8 @@
-import BuiltInImage1 from '@/assets/cover/m_cover_image_1.png';
-import BuiltInImage2 from '@/assets/cover/m_cover_image_2.png';
-import BuiltInImage3 from '@/assets/cover/m_cover_image_3.png';
-import BuiltInImage4 from '@/assets/cover/m_cover_image_4.png';
-import BuiltInImage5 from '@/assets/cover/m_cover_image_5.png';
-import BuiltInImage6 from '@/assets/cover/m_cover_image_6.png';
-import ViewCover, { CoverType } from '@/components/view-meta/ViewCover';
+import ViewCover from '@/components/view-meta/ViewCover';
 import { isFlagEmoji } from '@/utils/emoji';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ViewLayout, ViewMetaIcon } from '@/application/collab.type';
+import { CoverType, ViewLayout, ViewMetaIcon } from '@/application/types';
 
 export interface ViewMetaCover {
   type: CoverType;
@@ -42,12 +36,12 @@ export function ViewMetaPreview ({ icon, cover, name }: ViewMetaProps) {
   const coverValue = useMemo(() => {
     if (coverType === 'built_in') {
       return {
-        1: BuiltInImage1,
-        2: BuiltInImage2,
-        3: BuiltInImage3,
-        4: BuiltInImage4,
-        5: BuiltInImage5,
-        6: BuiltInImage6,
+        1: '/covers/m_cover_image_1.png',
+        2: '/covers/m_cover_image_2.png',
+        3: '/covers/m_cover_image_3.png',
+        4: '/covers/m_cover_image_4.png',
+        5: '/covers/m_cover_image_5.png',
+        6: '/covers/m_cover_image_6.png',
       }[cover?.value as string];
     }
 
@@ -61,9 +55,12 @@ export function ViewMetaPreview ({ icon, cover, name }: ViewMetaProps) {
 
   return (
     <div className={'flex w-full flex-col items-center'}>
-      {cover && <ViewCover coverType={coverType} coverValue={coverValue} />}
+      {cover && <ViewCover
+        coverType={coverType}
+        coverValue={coverValue}
+      />}
       <div
-        className={`relative mb-6 mt-[52px] max-md:mt-[38px] max-xl:px-8 w-[964px] min-w-0 max-w-full overflow-visible max-lg:px-6`}
+        className={`relative mb-6 mt-[52px] max-md:mt-[38px] px-6 w-[964px] min-w-0 max-w-full overflow-visible`}
       >
         <div
           className={

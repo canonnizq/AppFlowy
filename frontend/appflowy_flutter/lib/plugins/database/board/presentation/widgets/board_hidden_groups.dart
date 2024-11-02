@@ -16,7 +16,6 @@ import 'package:appflowy/plugins/database/widgets/cell/card_cell_builder.dart';
 import 'package:appflowy/plugins/database/widgets/cell/card_cell_skeleton/text_card_cell.dart';
 import 'package:appflowy/plugins/database/widgets/row/row_detail.dart';
 import 'package:appflowy_backend/protobuf/flowy-database2/protobuf.dart';
-import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:collection/collection.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
@@ -279,14 +278,14 @@ class HiddenGroupButtonContent extends StatelessWidget {
                                 index: index,
                               ),
                               const HSpace(4),
-                              FlowyText.medium(
+                              FlowyText(
                                 group
                                     .generateGroupName(bloc.databaseController),
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const HSpace(6),
                               Expanded(
-                                child: FlowyText.medium(
+                                child: FlowyText(
                                   group.rows.length.toString(),
                                   overflow: TextOverflow.ellipsis,
                                   color: Theme.of(context).hintColor,
@@ -387,7 +386,7 @@ class HiddenGroupPopupItemList extends StatelessWidget {
             final cells = <Widget>[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: FlowyText.medium(
+                child: FlowyText(
                   group.generateGroupName(bloc.databaseController),
                   fontSize: 10,
                   color: Theme.of(context).hintColor,
@@ -419,12 +418,11 @@ class HiddenGroupPopupItemList extends StatelessWidget {
                     onPressed: () {
                       FlowyOverlay.show(
                         context: context,
-                        builder: (_) {
-                          return RowDetailPage(
-                            databaseController: databaseController,
-                            rowController: rowController,
-                          );
-                        },
+                        builder: (_) => RowDetailPage(
+                          databaseController: databaseController,
+                          rowController: rowController,
+                          userProfile: context.read<BoardBloc>().userProfile,
+                        ),
                       );
                       PopoverContainer.of(context).close();
                     },
@@ -472,7 +470,7 @@ class HiddenGroupPopupItem extends StatelessWidget {
         text: cellBuilder.build(
           cellContext: cellContext,
           styleMap: {FieldType.RichText: _titleCellStyle(context)},
-          hasNotes: !rowMeta.isDocumentEmpty,
+          hasNotes: false,
         ),
         onTap: onPressed,
       ),

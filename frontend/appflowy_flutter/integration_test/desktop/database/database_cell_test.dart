@@ -211,21 +211,22 @@ void main() {
       await tester.toggleIncludeTime();
 
       // Select a date
-      final today = DateTime.now();
-      await tester.selectDay(content: today.day);
+      final now = DateTime.now();
+      final expected = DateTime(now.year, now.month, now.day);
+      await tester.selectDay(content: now.day);
 
       await tester.dismissCellEditor();
 
       tester.assertCellContent(
         rowIndex: 0,
         fieldType: FieldType.DateTime,
-        content: DateFormat('MMM dd, y').format(today),
+        content: DateFormat('MMM dd, y').format(expected),
       );
 
       await tester.tapCellInGrid(rowIndex: 0, fieldType: fieldType);
 
       // Toggle include time
-      final now = DateTime.now();
+      // When toggling include time, the time value is from the previous existing date time, not the current time
       await tester.toggleIncludeTime();
 
       await tester.dismissCellEditor();
@@ -233,7 +234,7 @@ void main() {
       tester.assertCellContent(
         rowIndex: 0,
         fieldType: FieldType.DateTime,
-        content: DateFormat('MMM dd, y HH:mm').format(now),
+        content: DateFormat('MMM dd, y HH:mm').format(expected),
       );
 
       await tester.tapCellInGrid(rowIndex: 0, fieldType: fieldType);
@@ -248,7 +249,7 @@ void main() {
       tester.assertCellContent(
         rowIndex: 0,
         fieldType: FieldType.DateTime,
-        content: DateFormat('dd/MM/y HH:mm').format(now),
+        content: DateFormat('dd/MM/y HH:mm').format(expected),
       );
 
       await tester.tapCellInGrid(rowIndex: 0, fieldType: fieldType);
@@ -263,7 +264,7 @@ void main() {
       tester.assertCellContent(
         rowIndex: 0,
         fieldType: FieldType.DateTime,
-        content: DateFormat('dd/MM/y hh:mm a').format(now),
+        content: DateFormat('dd/MM/y hh:mm a').format(expected),
       );
 
       await tester.tapCellInGrid(rowIndex: 0, fieldType: fieldType);
@@ -299,7 +300,7 @@ void main() {
       await tester.dismissCellEditor();
 
       // Make sure the option is created and displayed in the cell
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: 'tag 1',
       );
@@ -311,12 +312,12 @@ void main() {
       await tester.createOption(name: 'tag 2');
       await tester.dismissCellEditor();
 
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: 'tag 2',
       );
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsOneWidget,
       );
@@ -328,12 +329,12 @@ void main() {
       await tester.selectOption(name: 'tag 1');
       await tester.dismissCellEditor();
 
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: 'tag 1',
       );
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsOneWidget,
       );
@@ -345,7 +346,7 @@ void main() {
       await tester.selectOption(name: 'tag 1');
       await tester.dismissCellEditor();
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsNothing,
       );
@@ -378,7 +379,7 @@ void main() {
       await tester.dismissCellEditor();
 
       // Make sure the option is created and displayed in the cell
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: tags.first,
       );
@@ -393,13 +394,13 @@ void main() {
       await tester.dismissCellEditor();
 
       for (final tag in tags) {
-        await tester.findSelectOptionWithNameInGrid(
+        tester.findSelectOptionWithNameInGrid(
           rowIndex: 0,
           name: tag,
         );
       }
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsNWidgets(4),
       );
@@ -413,7 +414,7 @@ void main() {
       }
       await tester.dismissCellEditor();
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsNothing,
       );
@@ -426,16 +427,16 @@ void main() {
       await tester.selectOption(name: tags[3]);
       await tester.dismissCellEditor();
 
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: tags[1],
       );
-      await tester.findSelectOptionWithNameInGrid(
+      tester.findSelectOptionWithNameInGrid(
         rowIndex: 0,
         name: tags[3],
       );
 
-      await tester.assertNumberOfSelectedOptionsInGrid(
+      tester.assertNumberOfSelectedOptionsInGrid(
         rowIndex: 0,
         matcher: findsNWidgets(2),
       );
