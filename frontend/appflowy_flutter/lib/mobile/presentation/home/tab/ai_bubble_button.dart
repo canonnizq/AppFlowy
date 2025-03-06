@@ -16,15 +16,18 @@ class FloatingAIEntry extends StatelessWidget {
       scaleFactor: 0.99,
       onTapUp: () => mobileCreateNewAIChatNotifier.value =
           mobileCreateNewAIChatNotifier.value + 1,
-      child: DecoratedBox(
-        decoration: _buildShadowDecoration(context),
-        child: Container(
-          decoration: _buildWrapperDecoration(context),
-          height: 48,
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 18),
-            child: _buildHintText(context),
+      child: Hero(
+        tag: "ai_chat_prompt",
+        child: DecoratedBox(
+          decoration: _buildShadowDecoration(context),
+          child: Container(
+            decoration: _buildWrapperDecoration(context),
+            height: 48,
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 18),
+              child: _buildHintText(context),
+            ),
           ),
         ),
       ),
@@ -39,7 +42,7 @@ class FloatingAIEntry extends StatelessWidget {
           blurRadius: 20,
           spreadRadius: 1,
           offset: const Offset(0, 4),
-          color: Colors.black.withOpacity(0.05),
+          color: Colors.black.withValues(alpha: 0.05),
         ),
       ],
     );
@@ -48,8 +51,8 @@ class FloatingAIEntry extends StatelessWidget {
   BoxDecoration _buildWrapperDecoration(BuildContext context) {
     final outlineColor = Theme.of(context).colorScheme.outline;
     final borderColor = Theme.of(context).isLightMode
-        ? outlineColor.withOpacity(0.7)
-        : outlineColor.withOpacity(0.3);
+        ? outlineColor.withValues(alpha: 0.7)
+        : outlineColor.withValues(alpha: 0.3);
     return BoxDecoration(
       borderRadius: BorderRadius.circular(30),
       color: Theme.of(context).colorScheme.surface,

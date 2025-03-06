@@ -1,8 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/document/application/document_bloc.dart';
@@ -15,6 +12,7 @@ import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/util/string_extension.dart';
 import 'package:appflowy/workspace/application/settings/application_data_storage.dart';
 import 'package:appflowy/workspace/presentation/home/toast.dart';
+import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy/workspace/presentation/widgets/image_viewer/image_provider.dart';
 import 'package:appflowy/workspace/presentation/widgets/image_viewer/interactive_image_viewer.dart';
 import 'package:appflowy_backend/log.dart';
@@ -25,6 +23,8 @@ import 'package:flowy_infra/size.dart';
 import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra/uuid.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -103,7 +103,7 @@ class _MultiImageMenuState extends State<MultiImageMenu> {
           BoxShadow(
             blurRadius: 5,
             spreadRadius: 1,
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
           ),
         ],
         borderRadius: BorderRadius.circular(4.0),
@@ -217,9 +217,9 @@ class _MultiImageMenuState extends State<MultiImageMenu> {
     Clipboard.setData(
       ClipboardData(text: images[widget.indexNotifier.value].url),
     );
-    showSnackBarMessage(
+    showToastNotification(
       context,
-      LocaleKeys.document_plugins_image_copiedToPasteBoard.tr(),
+      message: LocaleKeys.document_plugins_image_copiedToPasteBoard.tr(),
     );
   }
 

@@ -10,10 +10,12 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/plugins.da
 import 'package:appflowy/plugins/inline_actions/inline_actions_menu.dart';
 import 'package:appflowy/shared/google_fonts_extension.dart';
 import 'package:appflowy/util/font_family_extension.dart';
+import 'package:appflowy/util/theme_extension.dart';
 import 'package:appflowy/workspace/application/appearance_defaults.dart';
 import 'package:appflowy/workspace/application/settings/appearance/appearance_cubit.dart';
 import 'package:appflowy/workspace/application/settings/appearance/base_appearance.dart';
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:appflowy_editor_plugins/appflowy_editor_plugins.dart';
 import 'package:collection/collection.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/theme_extension.dart';
@@ -31,21 +33,26 @@ class EditorStyleCustomizer {
     required this.context,
     required this.padding,
     this.width,
+    this.editorState,
   });
 
   final BuildContext context;
   final EdgeInsets padding;
   final double? width;
+  final EditorState? editorState;
 
   static const double maxDocumentWidth = 480 * 4;
   static const double minDocumentWidth = 480;
 
   static EdgeInsets get documentPadding => UniversalPlatform.isMobile
-      ? const EdgeInsets.symmetric(horizontal: 24)
+      ? EdgeInsets.zero
       : EdgeInsets.only(
           left: 40,
           right: 40 + EditorStyleCustomizer.optionMenuWidth,
         );
+
+  static double get nodeHorizontalPadding =>
+      UniversalPlatform.isMobile ? 24 : 0;
 
   static EdgeInsets get documentPaddingWithOptionMenu =>
       documentPadding + EdgeInsets.only(left: optionMenuWidth);
@@ -72,11 +79,15 @@ class EditorStyleCustomizer {
       fontFamily = appearanceFont;
     }
 
+    final cursorColor = (editorState?.editable ?? true)
+        ? (appearance.cursorColor ??
+            DefaultAppearanceSettings.getDefaultCursorColor(context))
+        : Colors.transparent;
+
     return EditorStyle.desktop(
       padding: padding,
       maxWidth: width,
-      cursorColor: appearance.cursorColor ??
-          DefaultAppearanceSettings.getDefaultCursorColor(context),
+      cursorColor: cursorColor,
       selectionColor: appearance.selectionColor ??
           DefaultAppearanceSettings.getDefaultSelectionColor(context),
       defaultTextDirection: appearance.defaultTextDirection,
@@ -107,7 +118,8 @@ class EditorStyleCustomizer {
             fontSize: fontSize,
             fontWeight: FontWeight.normal,
             color: Colors.red,
-            backgroundColor: theme.colorScheme.inverseSurface.withOpacity(0.8),
+            backgroundColor:
+                theme.colorScheme.inverseSurface.withValues(alpha: 0.8),
           ),
         ),
       ),
@@ -155,16 +167,17 @@ class EditorStyleCustomizer {
             fontSize: fontSize,
             fontWeight: FontWeight.normal,
             color: Colors.red,
-            backgroundColor: Colors.grey.withOpacity(0.3),
+            backgroundColor: Colors.grey.withValues(alpha: 0.3),
           ),
         ),
         applyHeightToFirstAscent: true,
         applyHeightToLastDescent: true,
       ),
       textSpanDecorator: customizeAttributeDecorator,
-      mobileDragHandleBallSize: const Size.square(12.0),
       magnifierSize: const Size(144, 96),
       textScaleFactor: textScaleFactor,
+      mobileDragHandleLeftExtend: 12.0,
+      mobileDragHandleWidthExtend: 24.0,
     );
   }
 
@@ -194,14 +207,19 @@ class EditorStyleCustomizer {
     );
   }
 
-  TextStyle codeBlockStyleBuilder() {
+  CodeBlockStyle codeBlockStyleBuilder() {
     final fontSize = context.read<DocumentAppearanceCubit>().state.fontSize;
     final fontFamily =
         context.read<DocumentAppearanceCubit>().state.codeFontFamily;
-    return baseTextStyle(fontFamily).copyWith(
-      fontSize: fontSize,
-      height: 1.5,
-      color: AFThemeExtension.of(context).onBackground,
+
+    return CodeBlockStyle(
+      textStyle: baseTextStyle(fontFamily).copyWith(
+        fontSize: fontSize,
+        height: 1.5,
+        color: AFThemeExtension.of(context).onBackground,
+      ),
+      backgroundColor: AFThemeExtension.of(context).calloutBGColor,
+      foregroundColor: AFThemeExtension.of(context).textColor.withAlpha(155),
     );
   }
 
@@ -231,8 +249,26 @@ class EditorStyleCustomizer {
       fontFamily: defaultFontFamily,
       fontSize: fontSize,
       height: 1.5,
-      color: AFThemeExtension.of(context).onBackground.withOpacity(0.6),
+      color: AFThemeExtension.of(context).onBackground.withValues(alpha: 0.6),
     );
+  }
+
+  TextStyle subPageBlockTextStyleBuilder() {
+    if (UniversalPlatform.isMobile) {
+      final pageStyle = context.read<DocumentPageStyleBloc>().state;
+      final fontSize = pageStyle.fontLayout.fontSize;
+      final fontFamily = pageStyle.fontFamily ?? defaultFontFamily;
+      final baseTextStyle = this.baseTextStyle(fontFamily);
+      return baseTextStyle.copyWith(
+        fontSize: fontSize,
+      );
+    } else {
+      final fontSize = context.read<DocumentAppearanceCubit>().state.fontSize;
+      return baseTextStyle(null).copyWith(
+        fontSize: fontSize,
+        height: 1.5,
+      );
+    }
   }
 
   SelectionMenuStyle selectionMenuStyleBuilder() {
@@ -245,6 +281,15 @@ class EditorStyleCustomizer {
       selectionMenuItemSelectedIconColor: theme.colorScheme.onSurface,
       selectionMenuItemSelectedTextColor: theme.colorScheme.onSurface,
       selectionMenuItemSelectedColor: afThemeExtension.greyHover,
+      selectionMenuUnselectedLabelColor: afThemeExtension.onBackground,
+      selectionMenuDividerColor: afThemeExtension.greyHover,
+      selectionMenuLinkBorderColor: afThemeExtension.greyHover,
+      selectionMenuInvalidLinkColor: afThemeExtension.onBackground,
+      selectionMenuButtonColor: afThemeExtension.greyHover,
+      selectionMenuButtonTextColor: afThemeExtension.onBackground,
+      selectionMenuButtonIconColor: afThemeExtension.onBackground,
+      selectionMenuButtonBorderColor: afThemeExtension.greyHover,
+      selectionMenuTabIndicatorColor: afThemeExtension.greyHover,
     );
   }
 
@@ -253,7 +298,7 @@ class EditorStyleCustomizer {
     final afThemeExtension = AFThemeExtension.of(context);
     return InlineActionsMenuStyle(
       backgroundColor: theme.cardColor,
-      groupTextColor: afThemeExtension.onBackground.withOpacity(.8),
+      groupTextColor: afThemeExtension.onBackground.withValues(alpha: .8),
       menuItemTextColor: afThemeExtension.onBackground,
       menuItemSelectedColor: theme.colorScheme.secondary,
       menuItemSelectedTextColor: theme.colorScheme.onSurface,
@@ -292,6 +337,11 @@ class EditorStyleCustomizer {
       return before;
     }
 
+    final suggestion = attributes[AiWriterBlockKeys.suggestion] as String?;
+    final newStyle = suggestion == null
+        ? after.style
+        : _styleSuggestion(after.style, suggestion);
+
     if (attributes.backgroundColor != null) {
       final color = EditorFontColors.fromBuiltInColors(
         context,
@@ -300,7 +350,7 @@ class EditorStyleCustomizer {
       if (color != null) {
         return TextSpan(
           text: before.text,
-          style: after.style?.merge(
+          style: newStyle?.merge(
             TextStyle(backgroundColor: color),
           ),
         );
@@ -315,7 +365,7 @@ class EditorStyleCustomizer {
         } else {
           return TextSpan(
             text: before.text,
-            style: after.style?.merge(
+            style: newStyle?.merge(
               getGoogleFontSafely(attributes.fontFamily!),
             ),
           );
@@ -332,7 +382,7 @@ class EditorStyleCustomizer {
       final type = mention[MentionBlockKeys.type];
       return WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        style: after.style,
+        style: newStyle,
         child: MentionBlock(
           key: ValueKey(
             switch (type) {
@@ -344,7 +394,7 @@ class EditorStyleCustomizer {
           node: node,
           index: index,
           mention: mention,
-          textStyle: after.style,
+          textStyle: newStyle,
         ),
       );
     }
@@ -353,12 +403,13 @@ class EditorStyleCustomizer {
     final formula = attributes[InlineMathEquationKeys.formula];
     if (formula is String) {
       return WidgetSpan(
+        style: after.style,
         alignment: PlaceholderAlignment.middle,
         child: InlineMathEquation(
           node: node,
           index: index,
           formula: formula,
-          textStyle: style().textStyleConfiguration.text,
+          textStyle: after.style ?? style().textStyleConfiguration.text,
         ),
       );
     }
@@ -406,6 +457,13 @@ class EditorStyleCustomizer {
       );
     }
 
+    if (suggestion != null) {
+      return TextSpan(
+        text: before.text,
+        style: newStyle,
+      );
+    }
+
     return defaultTextSpanDecoratorForAttribute(
       context,
       node,
@@ -441,7 +499,7 @@ class EditorStyleCustomizer {
         padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: FlowyHover(
           style: HoverStyle(
-            hoverColor: Colors.grey.withOpacity(0.3),
+            hoverColor: Colors.grey.withValues(alpha: 0.3),
           ),
           child: child,
         ),
@@ -458,6 +516,10 @@ class EditorStyleCustomizer {
       'italic': (LocaleKeys.toolbar_italic.tr(), 'I'),
       'strikethrough': (LocaleKeys.toolbar_strike.tr(), 'Shift+S'),
       'code': (LocaleKeys.toolbar_inlineCode.tr(), 'E'),
+      'editor.inline_math_equation': (
+        LocaleKeys.document_plugins_createInlineMathEquation.tr(),
+        'Shift+E'
+      ),
     };
 
     final markdownItemIds = markdownItemTooltips.keys.toSet();
@@ -493,5 +555,35 @@ class EditorStyleCustomizer {
     );
 
     return textSpan;
+  }
+
+  TextStyle? _styleSuggestion(TextStyle? style, String suggestion) {
+    if (style == null) {
+      return null;
+    }
+    final fontSize = style.fontSize ?? 14.0;
+    final isLight = Theme.of(context).isLightMode;
+    final textColor = isLight ? Color(0xFF007296) : Color(0xFF49CFF4);
+    final underlineColor = isLight ? Color(0x33005A7A) : Color(0x3349CFF4);
+    return switch (suggestion) {
+      AiWriterBlockKeys.suggestionOriginal => style.copyWith(
+          color: Theme.of(context).disabledColor,
+          decoration: TextDecoration.lineThrough,
+        ),
+      AiWriterBlockKeys.suggestionReplacement => style.copyWith(
+          color: Colors.transparent,
+          decoration: TextDecoration.underline,
+          decorationColor: underlineColor,
+          decorationThickness: 1.0,
+          // hack: https://jtmuller5.medium.com/the-ultimate-guide-to-underlining-text-in-flutter-57936f5c79bb
+          shadows: [
+            Shadow(
+              color: textColor,
+              offset: Offset(0, -fontSize * 0.2),
+            ),
+          ],
+        ),
+      _ => style,
+    };
   }
 }

@@ -1,6 +1,6 @@
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
-import 'package:appflowy/plugins/document/presentation/editor_plugins/openai/widgets/loading.dart';
+import 'package:appflowy/shared/loading.dart';
 import 'package:appflowy/workspace/application/user/user_workspace_bloc.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/shared/sidebar_setting.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/workspace/_sidebar_workspace_icon.dart';
@@ -204,9 +204,13 @@ class _SidebarSwitchWorkspaceButtonState
   @override
   Widget build(BuildContext context) {
     return AppFlowyPopover(
-      direction: PopoverDirection.bottomWithLeftAligned,
+      direction: PopoverDirection.bottomWithCenterAligned,
       offset: const Offset(0, 5),
       constraints: const BoxConstraints(maxWidth: 300, maxHeight: 600),
+      margin: EdgeInsets.zero,
+      animationDuration: Durations.short3,
+      beginScaleFactor: 1.0,
+      beginOpacity: 0.8,
       controller: _popoverController,
       triggerActions: PopoverTriggerFlags.none,
       onOpen: () {

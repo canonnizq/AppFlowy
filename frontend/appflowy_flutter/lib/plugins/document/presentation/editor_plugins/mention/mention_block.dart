@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 
 enum MentionType {
   page,
-  reminder,
   date,
   childPage;
 
@@ -125,8 +124,6 @@ class MentionBlock extends StatelessWidget {
           reminderOption: reminderOption ?? ReminderOption.none,
           includeTime: mention[MentionBlockKeys.includeTime] ?? false,
         );
-      default:
-        return const SizedBox.shrink();
     }
   }
 }

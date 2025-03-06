@@ -1,6 +1,5 @@
-use client_api::error::{AppResponseError, ErrorCode as AppErrorCode};
-
 use crate::{ErrorCode, FlowyError};
+use client_api::error::{AppResponseError, ErrorCode as AppErrorCode};
 
 impl From<AppResponseError> for FlowyError {
   fn from(error: AppResponseError) -> Self {
@@ -19,12 +18,15 @@ impl From<AppResponseError> for FlowyError {
       AppErrorCode::InvalidOAuthProvider => ErrorCode::InvalidAuthConfig,
       AppErrorCode::NotLoggedIn => ErrorCode::UserUnauthorized,
       AppErrorCode::NotEnoughPermissions => ErrorCode::NotEnoughPermissions,
-      AppErrorCode::NetworkError => ErrorCode::HttpError,
+      AppErrorCode::NetworkError => ErrorCode::NetworkError,
+      AppErrorCode::RequestTimeout => ErrorCode::RequestTimeout,
       AppErrorCode::PayloadTooLarge => ErrorCode::PayloadTooLarge,
       AppErrorCode::UserUnAuthorized => ErrorCode::UserUnauthorized,
       AppErrorCode::WorkspaceLimitExceeded => ErrorCode::WorkspaceLimitExceeded,
       AppErrorCode::WorkspaceMemberLimitExceeded => ErrorCode::WorkspaceMemberLimitExceeded,
       AppErrorCode::AIResponseLimitExceeded => ErrorCode::AIResponseLimitExceeded,
+      AppErrorCode::AIImageResponseLimitExceeded => ErrorCode::AIImageResponseLimitExceeded,
+      AppErrorCode::AIMaxRequired => ErrorCode::AIMaxRequired,
       AppErrorCode::FileStorageLimitExceeded => ErrorCode::FileStorageLimitExceeded,
       AppErrorCode::SingleUploadLimitExceeded => ErrorCode::SingleUploadLimitExceeded,
       AppErrorCode::CustomNamespaceDisabled => ErrorCode::CustomNamespaceRequirePlanUpgrade,
@@ -37,6 +39,7 @@ impl From<AppResponseError> for FlowyError {
       AppErrorCode::PublishNameInvalidCharacter => ErrorCode::PublishNameInvalidCharacter,
       AppErrorCode::PublishNameTooLong => ErrorCode::PublishNameTooLong,
       AppErrorCode::CustomNamespaceInvalidCharacter => ErrorCode::CustomNamespaceInvalidCharacter,
+      AppErrorCode::AIServiceUnavailable => ErrorCode::AIServiceUnavailable,
       _ => ErrorCode::Internal,
     };
 

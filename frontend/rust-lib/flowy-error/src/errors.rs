@@ -13,7 +13,7 @@ use crate::code::ErrorCode;
 pub type FlowyResult<T> = anyhow::Result<T, FlowyError>;
 
 #[derive(Debug, Default, Clone, ProtoBuf, Error)]
-#[error("{msg}")]
+#[error("code:{code}, message:{msg}")]
 pub struct FlowyError {
   #[pb(index = 1)]
   pub code: ErrorCode,
@@ -74,11 +74,29 @@ impl FlowyError {
 
   pub fn is_file_limit_exceeded(&self) -> bool {
     self.code == ErrorCode::FileStorageLimitExceeded
-      || self.code == ErrorCode::SingleUploadLimitExceeded
+  }
+
+  pub fn is_single_file_limit_exceeded(&self) -> bool {
+    self.code == ErrorCode::SingleUploadLimitExceeded
+  }
+
+  pub fn should_retry_upload(&self) -> bool {
+    !matches!(
+      self.code,
+      ErrorCode::FileStorageLimitExceeded | ErrorCode::SingleUploadLimitExceeded
+    )
   }
 
   pub fn is_ai_response_limit_exceeded(&self) -> bool {
     self.code == ErrorCode::AIResponseLimitExceeded
+  }
+
+  pub fn is_ai_image_response_limit_exceeded(&self) -> bool {
+    self.code == ErrorCode::AIImageResponseLimitExceeded
+  }
+
+  pub fn is_ai_max_required(&self) -> bool {
+    self.code == ErrorCode::AIMaxRequired
   }
 
   static_flowy_error!(internal, ErrorCode::Internal);
@@ -113,7 +131,7 @@ impl FlowyError {
   static_flowy_error!(serde, ErrorCode::Serde);
   static_flowy_error!(field_record_not_found, ErrorCode::FieldRecordNotFound);
   static_flowy_error!(payload_none, ErrorCode::UnexpectedEmpty);
-  static_flowy_error!(http, ErrorCode::HttpError);
+  static_flowy_error!(http, ErrorCode::NetworkError);
   static_flowy_error!(
     unexpect_calendar_field_type,
     ErrorCode::UnexpectedCalendarFieldType
@@ -131,6 +149,8 @@ impl FlowyError {
   static_flowy_error!(local_ai_unavailable, ErrorCode::LocalAIUnavailable);
   static_flowy_error!(response_timeout, ErrorCode::ResponseTimeout);
   static_flowy_error!(file_storage_limit, ErrorCode::FileStorageLimitExceeded);
+
+  static_flowy_error!(view_is_locked, ErrorCode::ViewIsLocked);
 }
 
 impl std::convert::From<ErrorCode> for FlowyError {

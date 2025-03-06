@@ -60,7 +60,7 @@ extension MinimalViewExtension on FolderViewMinimalPB {
           ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
           ViewLayoutPB.Document => FlowySvgs.icon_document_s,
           ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
-          _ => FlowySvgs.document_s,
+          _ => FlowySvgs.icon_document_s,
         },
         size: size,
       );
@@ -70,6 +70,13 @@ extension ViewExtension on ViewPB {
   String get nameOrDefault =>
       name.isEmpty ? LocaleKeys.menuAppHeader_defaultNewPageName.tr() : name;
 
+  bool get isDocument => pluginType == PluginType.document;
+  bool get isDatabase => [
+        PluginType.grid,
+        PluginType.board,
+        PluginType.calendar,
+      ].contains(pluginType);
+
   Widget defaultIcon({Size? size}) => FlowySvg(
         switch (layout) {
           ViewLayoutPB.Board => FlowySvgs.icon_board_s,
@@ -77,7 +84,7 @@ extension ViewExtension on ViewPB {
           ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
           ViewLayoutPB.Document => FlowySvgs.icon_document_s,
           ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
-          _ => FlowySvgs.document_s,
+          _ => FlowySvgs.icon_document_s,
         },
         size: size,
       );
@@ -293,12 +300,12 @@ extension ViewExtension on ViewPB {
 
 extension ViewLayoutExtension on ViewLayoutPB {
   FlowySvgData get icon => switch (this) {
-        ViewLayoutPB.Grid => FlowySvgs.grid_s,
-        ViewLayoutPB.Board => FlowySvgs.board_s,
-        ViewLayoutPB.Calendar => FlowySvgs.calendar_s,
-        ViewLayoutPB.Document => FlowySvgs.document_s,
+        ViewLayoutPB.Board => FlowySvgs.icon_board_s,
+        ViewLayoutPB.Calendar => FlowySvgs.icon_calendar_s,
+        ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
+        ViewLayoutPB.Document => FlowySvgs.icon_document_s,
         ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
-        _ => throw Exception('Unknown layout type'),
+        _ => FlowySvgs.icon_document_s,
       };
 
   bool get isDocumentView => switch (this) {
@@ -323,6 +330,19 @@ extension ViewLayoutExtension on ViewLayoutPB {
   String get defaultName => switch (this) {
         ViewLayoutPB.Document => '',
         _ => LocaleKeys.menuAppHeader_defaultNewPageName.tr(),
+      };
+
+  bool get shrinkWrappable => switch (this) {
+        ViewLayoutPB.Grid => true,
+        ViewLayoutPB.Board => true,
+        _ => false,
+      };
+
+  double get pluginHeight => switch (this) {
+        ViewLayoutPB.Document || ViewLayoutPB.Board || ViewLayoutPB.Chat => 450,
+        ViewLayoutPB.Calendar => 650,
+        ViewLayoutPB.Grid => double.infinity,
+        _ => throw UnimplementedError(),
       };
 }
 

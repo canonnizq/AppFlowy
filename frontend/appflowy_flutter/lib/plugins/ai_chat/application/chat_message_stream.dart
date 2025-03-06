@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
-import 'package:appflowy/plugins/ai_chat/application/chat_entity.dart';
 import 'package:appflowy/plugins/ai_chat/application/chat_message_service.dart';
 
 class AnswerStream {
@@ -14,34 +13,37 @@ class AnswerStream {
           _hasStarted = true;
           final newText = event.substring(5);
           _text += newText;
-          if (_onData != null) {
-            _onData!(_text);
-          }
+          _onData?.call(_text);
         } else if (event.startsWith("error:")) {
           _error = event.substring(5);
-          if (_onError != null) {
-            _onError!(_error!);
-          }
+          _onError?.call(_error!);
         } else if (event.startsWith("metadata:")) {
           if (_onMetadata != null) {
             final s = event.substring(9);
-            _onMetadata!(messageReferenceSource(s));
+            _onMetadata!(parseMetadata(s));
           }
         } else if (event == "AI_RESPONSE_LIMIT") {
-          if (_onAIResponseLimit != null) {
-            _onAIResponseLimit!();
+          _aiLimitReached = true;
+          _onAIResponseLimit?.call();
+        } else if (event == "AI_IMAGE_RESPONSE_LIMIT") {
+          _aiImageLimitReached = true;
+          _onAIImageResponseLimit?.call();
+        } else if (event.startsWith("AI_MAX_REQUIRED:")) {
+          final msg = event.substring(16);
+          // If the callback is not registered yet, add the event to the buffer.
+          if (_onAIMaxRequired != null) {
+            _onAIMaxRequired!(msg);
+          } else {
+            _pendingAIMaxRequiredEvents.add(msg);
           }
         }
       },
       onDone: () {
-        if (_onEnd != null) {
-          _onEnd!();
-        }
+        _onEnd?.call();
       },
       onError: (error) {
-        if (_onError != null) {
-          _onError!(error.toString());
-        }
+        _error = error.toString();
+        _onError?.call(error.toString());
       },
     );
   }
@@ -50,6 +52,8 @@ class AnswerStream {
   final StreamController<String> _controller = StreamController.broadcast();
   late StreamSubscription<String> _subscription;
   bool _hasStarted = false;
+  bool _aiLimitReached = false;
+  bool _aiImageLimitReached = false;
   String? _error;
   String _text = "";
 
@@ -59,10 +63,17 @@ class AnswerStream {
   void Function()? _onEnd;
   void Function(String error)? _onError;
   void Function()? _onAIResponseLimit;
-  void Function(List<ChatMessageRefSource> metadata)? _onMetadata;
+  void Function()? _onAIImageResponseLimit;
+  void Function(String message)? _onAIMaxRequired;
+  void Function(MetadataCollection metadataCollection)? _onMetadata;
+
+  // Buffer for events that occur before listen() is called.
+  final List<String> _pendingAIMaxRequiredEvents = [];
 
   int get nativePort => _port.sendPort.nativePort;
   bool get hasStarted => _hasStarted;
+  bool get aiLimitReached => _aiLimitReached;
+  bool get aiImageLimitReached => _aiImageLimitReached;
   String? get error => _error;
   String get text => _text;
 
@@ -78,18 +89,28 @@ class AnswerStream {
     void Function()? onEnd,
     void Function(String error)? onError,
     void Function()? onAIResponseLimit,
-    void Function(List<ChatMessageRefSource> metadata)? onMetadata,
+    void Function()? onAIImageResponseLimit,
+    void Function(String message)? onAIMaxRequired,
+    void Function(MetadataCollection metadata)? onMetadata,
   }) {
     _onData = onData;
     _onStart = onStart;
     _onEnd = onEnd;
     _onError = onError;
     _onAIResponseLimit = onAIResponseLimit;
+    _onAIImageResponseLimit = onAIImageResponseLimit;
     _onMetadata = onMetadata;
+    _onAIMaxRequired = onAIMaxRequired;
 
-    if (_onStart != null) {
-      _onStart!();
+    // Flush any buffered AI_MAX_REQUIRED events.
+    if (_onAIMaxRequired != null && _pendingAIMaxRequiredEvents.isNotEmpty) {
+      for (final msg in _pendingAIMaxRequiredEvents) {
+        _onAIMaxRequired!(msg);
+      }
+      _pendingAIMaxRequiredEvents.clear();
     }
+
+    _onStart?.call();
   }
 }
 

@@ -74,6 +74,8 @@ pub struct PublishInfoResponsePB {
   pub publisher_email: String,
   #[pb(index = 5)]
   pub publish_timestamp_sec: i64,
+  #[pb(index = 6, one_of)]
+  pub unpublished_at_timestamp_sec: Option<i64>,
 }
 
 impl From<PublishInfo> for PublishInfoResponsePB {
@@ -81,9 +83,10 @@ impl From<PublishInfo> for PublishInfoResponsePB {
     Self {
       view_id: info.view_id.to_string(),
       publish_name: info.publish_name,
-      namespace: info.namespace,
+      namespace: Some(info.namespace),
       publisher_email: info.publisher_email,
       publish_timestamp_sec: info.publish_timestamp.timestamp(),
+      unpublished_at_timestamp_sec: info.unpublished_timestamp.map(|t| t.timestamp()),
     }
   }
 }

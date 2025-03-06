@@ -5,7 +5,7 @@ import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/user/application/auth/auth_service.dart';
 import 'package:appflowy/user/application/prelude.dart';
 import 'package:appflowy/user/presentation/screens/sign_in_screen/widgets/magic_link_sign_in_buttons.dart';
-import 'package:appflowy/util/navigator_context_exntesion.dart';
+import 'package:appflowy/util/navigator_context_extension.dart';
 import 'package:appflowy/workspace/presentation/settings/widgets/setting_third_party_login.dart';
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/user_profile.pb.dart';
@@ -13,6 +13,34 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
+class AccountSignInOutSection extends StatelessWidget {
+  const AccountSignInOutSection({
+    super.key,
+    required this.userProfile,
+    required this.onAction,
+    this.signIn = true,
+  });
+
+  final UserProfilePB userProfile;
+  final VoidCallback onAction;
+  final bool signIn;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        FlowyText.regular(LocaleKeys.settings_accountPage_login_title.tr()),
+        const Spacer(),
+        AccountSignInOutButton(
+          userProfile: userProfile,
+          onAction: onAction,
+          signIn: signIn,
+        ),
+      ],
+    );
+  }
+}
 
 class AccountSignInOutButton extends StatelessWidget {
   const AccountSignInOutButton({
@@ -32,9 +60,9 @@ class AccountSignInOutButton extends StatelessWidget {
       text: signIn
           ? LocaleKeys.settings_accountPage_login_loginLabel.tr()
           : LocaleKeys.settings_accountPage_login_logoutLabel.tr(),
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      fontWeight: FontWeight.w600,
-      radius: 12.0,
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      fontWeight: FontWeight.w500,
+      radius: 8.0,
       onTap: () =>
           signIn ? _showSignInDialog(context) : _showLogoutDialog(context),
     );

@@ -3,7 +3,9 @@ use crate::entities::{CompleteTextPB, CompleteTextTaskPB, CompletionTypePB};
 use allo_isolate::Isolate;
 
 use dashmap::DashMap;
-use flowy_ai_pub::cloud::{ChatCloudService, CompletionType};
+use flowy_ai_pub::cloud::{
+  ChatCloudService, CompleteTextParams, CompletionMetadata, CompletionType,
+};
 use flowy_error::{FlowyError, FlowyResult};
 
 use futures::{SinkExt, StreamExt};
@@ -11,6 +13,7 @@ use lib_infra::isolate_stream::IsolateSink;
 
 use std::sync::{Arc, Weak};
 use tokio::select;
+use tracing::info;
 
 pub struct AICompletion {
   tasks: Arc<DashMap<String, tokio::sync::mpsc::Sender<()>>>,
@@ -85,18 +88,31 @@ impl CompletionTask {
 
       if let Some(cloud_service) = self.cloud_service.upgrade() {
         let complete_type = match self.context.completion_type {
-          CompletionTypePB::UnknownCompletionType | CompletionTypePB::ImproveWriting => {
-            CompletionType::ImproveWriting
-          },
+          CompletionTypePB::ImproveWriting => CompletionType::ImproveWriting,
           CompletionTypePB::SpellingAndGrammar => CompletionType::SpellingAndGrammar,
           CompletionTypePB::MakeShorter => CompletionType::MakeShorter,
           CompletionTypePB::MakeLonger => CompletionType::MakeLonger,
           CompletionTypePB::ContinueWriting => CompletionType::ContinueWriting,
+          CompletionTypePB::ExplainSelected => CompletionType::Explain,
+          CompletionTypePB::UserQuestion => CompletionType::UserQuestion,
         };
 
         let _ = sink.send("start:".to_string()).await;
+        let params = CompleteTextParams {
+          text: self.context.text,
+          completion_type: Some(complete_type),
+          custom_prompt: None,
+          metadata: Some(CompletionMetadata {
+            object_id: self.context.object_id,
+            workspace_id: Some(self.workspace_id.clone()),
+            rag_ids: Some(self.context.rag_ids),
+          }),
+          format: self.context.format.map(Into::into).unwrap_or_default(),
+        };
+
+        info!("start completion: {:?}", params);
         match cloud_service
-          .stream_complete(&self.workspace_id, &self.context.text, complete_type)
+          .stream_complete(&self.workspace_id, params)
           .await
         {
           Ok(mut stream) => loop {
@@ -130,9 +146,12 @@ impl CompletionTask {
     });
   }
 }
+
 async fn handle_error(sink: &mut IsolateSink, error: FlowyError) {
   if error.is_ai_response_limit_exceeded() {
     let _ = sink.send("AI_RESPONSE_LIMIT".to_string()).await;
+  } else if error.is_ai_image_response_limit_exceeded() {
+    let _ = sink.send("AI_IMAGE_RESPONSE_LIMIT".to_string()).await;
   } else {
     let _ = sink.send(format!("error:{}", error)).await;
   }

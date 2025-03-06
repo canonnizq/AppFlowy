@@ -524,11 +524,15 @@ class _CheckedPopupMenuItemState<T>
     super.initState();
     _controller = AnimationController(duration: _fadeDuration, vsync: this)
       ..value = widget.checked ? 1.0 : 0.0
-      ..addListener(() => setState(() {/* animation changed */}));
+      ..addListener(_updateState);
   }
+
+  // Called when animation changed
+  void _updateState() => setState(() {});
 
   @override
   void dispose() {
+    _controller.removeListener(_updateState);
     _controller.dispose();
     super.dispose();
   }
@@ -1609,7 +1613,7 @@ class _PopupMenuDefaultsM3 extends PopupMenuThemeData {
     return WidgetStateProperty.resolveWith((Set<WidgetState> states) {
       final TextStyle style = _textTheme.labelLarge!;
       if (states.contains(WidgetState.disabled)) {
-        return style.apply(color: _colors.onSurface.withOpacity(0.38));
+        return style.apply(color: _colors.onSurface.withValues(alpha: 0.38));
       }
       return style.apply(color: _colors.onSurface);
     });

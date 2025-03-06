@@ -1,14 +1,20 @@
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
 import 'package:appflowy/workspace/application/view/view_ext.dart';
-import 'package:flutter/material.dart';
-
 import 'package:appflowy/workspace/application/view/view_listener.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
+import 'package:flutter/material.dart';
 
 class ViewTabBarItem extends StatefulWidget {
-  const ViewTabBarItem({super.key, required this.view});
+  const ViewTabBarItem({
+    super.key,
+    required this.view,
+    this.shortForm = false,
+  });
 
   final ViewPB view;
+  final bool shortForm;
 
   @override
   State<ViewTabBarItem> createState() => _ViewTabBarItemState();
@@ -39,5 +45,26 @@ class _ViewTabBarItemState extends State<ViewTabBarItem> {
   }
 
   @override
-  Widget build(BuildContext context) => FlowyText.medium(view.nameOrDefault);
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment:
+          widget.shortForm ? MainAxisAlignment.center : MainAxisAlignment.start,
+      children: [
+        if (widget.view.icon.value.isNotEmpty)
+          RawEmojiIconWidget(
+            emoji: widget.view.icon.toEmojiIconData(),
+            emojiSize: 16,
+          ),
+        if (!widget.shortForm && view.icon.value.isNotEmpty) const HSpace(6),
+        if (!widget.shortForm || view.icon.value.isEmpty) ...[
+          Flexible(
+            child: FlowyText.medium(
+              view.nameOrDefault,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }

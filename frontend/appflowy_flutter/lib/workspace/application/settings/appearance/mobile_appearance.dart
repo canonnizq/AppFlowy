@@ -49,11 +49,11 @@ class MobileAppearance extends BaseAppearance {
             error: const Color(0xffFB006D),
             onError: const Color(0xffFB006D),
             outline: const Color(0xffe3e3e3),
-            outlineVariant: const Color(0xffCBD5E0).withOpacity(0.24),
+            outlineVariant: const Color(0xffCBD5E0).withValues(alpha: 0.24),
             //Snack bar
             surface: Colors.white,
             onSurface: _onSurfaceColor, // text/body color
-            surfaceContainerHighest: const Color.fromARGB(255, 216, 216, 216),
+            surfaceContainerHighest: theme.sidebarBg,
           )
         : ColorScheme(
             brightness: brightness,
@@ -69,6 +69,7 @@ class MobileAppearance extends BaseAppearance {
             //Snack bar
             surface: const Color(0xFF171A1F),
             onSurface: const Color(0xffC5C6C7), // text/body color
+            surfaceContainerHighest: theme.sidebarBg,
           );
     final hintColor = brightness == Brightness.light
         ? const Color(0x991F2329)
@@ -278,6 +279,7 @@ class MobileAppearance extends BaseAppearance {
           borderColor: theme.borderColor,
           scrollbarColor: theme.scrollbarColor,
           scrollbarHoverColor: theme.scrollbarHoverColor,
+          lightIconColor: theme.lightIconColor,
         ),
         ToolbarColorExtension.fromBrightness(brightness),
       ],

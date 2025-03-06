@@ -179,7 +179,6 @@
     "aiMistakePrompt": "AI 可能會犯錯，請檢查重要資訊。",
     "clickToMention": "單擊以提及頁面",
     "uploadFile": "上傳 PDF、md 或 txt 檔案以進行聊天",
-    "questionTitle": "想法",
     "questionDetail": "{} 你好！我能為您提供什麼幫助？"
   },
   "trash": {
@@ -298,7 +297,6 @@
     "storageLimitDialogTitle": "您的免費儲存空間已用完，升級以解鎖無限儲存空間",
     "storageLimitDialogTitleIOS": "您的免費儲存空間已用完。",
     "aiResponseLimitTitle": "您的免費 AI 回覆已用完，升級到 Pro 或購買 AI 附加方案以解鎖無限回覆",
-    "aiResponseLimitTitleIOS": "您的免費 AI 回覆已用完。",
     "aiResponseLimitDialogTitle": "AI 回覆已達到限制",
     "purchaseStorageSpace": "購買儲存空間",
     "purchaseAIResponse": "購買"
@@ -1534,9 +1532,9 @@
     "photo": "圖片",
     "pageCover": "封面",
     "none": "無",
-    "photoPermissionDescription": "允許存取圖片庫以上傳圖片",
     "openSettings": "打開設定",
     "photoPermissionTitle": "@:appName 希望存取您的圖片庫",
+    "photoPermissionDescription": "允許存取圖片庫以上傳圖片",
     "doNotAllow": "不允許"
   },
   "commandPalette": {

@@ -4,6 +4,7 @@ import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/shared/colors.dart';
 import 'package:appflowy/shared/flowy_error_page.dart';
+import 'package:appflowy/shared/loading.dart';
 import 'package:appflowy/util/int64_extension.dart';
 import 'package:appflowy/util/theme_extension.dart';
 import 'package:appflowy/workspace/application/settings/appearance/appearance_cubit.dart';
@@ -23,8 +24,6 @@ import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
-import '../../../../plugins/document/presentation/editor_plugins/openai/widgets/loading.dart';
 
 class SettingsPlanView extends StatefulWidget {
   const SettingsPlanView({
@@ -603,8 +602,8 @@ class _PlanProgressIndicator extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               color: AFThemeExtension.of(context).progressBarBGColor,
               border: Border.all(
-                color: const Color(0xFFDDF1F7).withOpacity(
-                  theme.brightness == Brightness.light ? 1 : 0.1,
+                color: const Color(0xFFDDF1F7).withValues(
+                  alpha: theme.brightness == Brightness.light ? 1 : 0.1,
                 ),
               ),
             ),
@@ -674,7 +673,7 @@ class _AddOnBox extends StatelessWidget {
         border: Border.all(
           color: isActive ? const Color(0xFFBDBDBD) : const Color(0xFF9C00FB),
         ),
-        color: const Color(0xFFF7F8FC).withOpacity(0.05),
+        color: const Color(0xFFF7F8FC).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

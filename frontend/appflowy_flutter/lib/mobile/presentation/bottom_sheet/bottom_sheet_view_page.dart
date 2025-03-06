@@ -4,9 +4,12 @@ import 'package:appflowy/mobile/application/base/mobile_view_page_bloc.dart';
 import 'package:appflowy/mobile/presentation/bottom_sheet/bottom_sheet.dart';
 import 'package:appflowy/mobile/presentation/widgets/flowy_mobile_quick_action_button.dart';
 import 'package:appflowy/plugins/shared/share/share_bloc.dart';
+import 'package:appflowy/workspace/application/view/view_ext.dart';
+import 'package:appflowy/workspace/application/view/view_lock_status_bloc.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -24,11 +27,28 @@ enum MobileViewBottomSheetBodyAction {
   copyPublishLink,
   visitSite,
   copyShareLink,
+  updatePathName,
+  lockPage;
+
+  static const disableInLockedView = [
+    undo,
+    redo,
+    rename,
+    delete,
+  ];
+}
+
+class MobileViewBottomSheetBodyActionArguments {
+  static const isLockedKey = 'is_locked';
 }
 
 typedef MobileViewBottomSheetBodyActionCallback = void Function(
   MobileViewBottomSheetBodyAction action,
-);
+  // for the [MobileViewBottomSheetBodyAction.lockPage] action,
+  // it will pass the [isLocked] value to the callback.
+  {
+  Map<String, dynamic>? arguments,
+});
 
 class ViewPageBottomSheet extends StatefulWidget {
   const ViewPageBottomSheet({
@@ -55,7 +75,7 @@ class _ViewPageBottomSheetState extends State<ViewPageBottomSheet> {
       case MobileBottomSheetType.view:
         return MobileViewBottomSheetBody(
           view: widget.view,
-          onAction: (action) {
+          onAction: (action, {arguments}) {
             switch (action) {
               case MobileViewBottomSheetBodyAction.rename:
                 setState(() {
@@ -63,7 +83,7 @@ class _ViewPageBottomSheetState extends State<ViewPageBottomSheet> {
                 });
                 break;
               default:
-                widget.onAction(action);
+                widget.onAction(action, arguments: arguments);
             }
           },
         );
@@ -92,6 +112,8 @@ class MobileViewBottomSheetBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFavorite = view.isFavorite;
+    final isLocked =
+        context.watch<ViewLockStatusBloc?>()?.state.isLocked ?? false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -99,6 +121,7 @@ class MobileViewBottomSheetBody extends StatelessWidget {
           text: LocaleKeys.button_rename.tr(),
           icon: FlowySvgs.view_item_rename_s,
           iconSize: const Size.square(18),
+          enable: !isLocked,
           onTap: () => onAction(
             MobileViewBottomSheetBodyAction.rename,
           ),
@@ -117,6 +140,28 @@ class MobileViewBottomSheetBody extends StatelessWidget {
           ),
         ),
         _divider(),
+        if (view.layout.isDatabaseView || view.layout.isDocumentView) ...[
+          MobileQuickActionButton(
+            text: LocaleKeys.disclosureAction_lockPage.tr(),
+            icon: FlowySvgs.lock_page_s,
+            iconSize: const Size.square(18),
+            rightIconBuilder: (context) => _LockPageRightIconBuilder(
+              onAction: onAction,
+            ),
+            onTap: () {
+              final isLocked =
+                  context.read<ViewLockStatusBloc?>()?.state.isLocked ?? false;
+              onAction(
+                MobileViewBottomSheetBodyAction.lockPage,
+                arguments: {
+                  MobileViewBottomSheetBodyActionArguments.isLockedKey:
+                      !isLocked,
+                },
+              );
+            },
+          ),
+          _divider(),
+        ],
         MobileQuickActionButton(
           text: LocaleKeys.button_duplicate.tr(),
           icon: FlowySvgs.duplicate_s,
@@ -144,6 +189,7 @@ class MobileViewBottomSheetBody extends StatelessWidget {
           icon: FlowySvgs.trash_s,
           iconColor: Theme.of(context).colorScheme.error,
           iconSize: const Size.square(18),
+          enable: !isLocked,
           onTap: () => onAction(
             MobileViewBottomSheetBodyAction.delete,
           ),
@@ -164,6 +210,15 @@ class MobileViewBottomSheetBody extends StatelessWidget {
     final isPublished = context.watch<ShareBloc>().state.isPublished;
     if (isPublished) {
       return [
+        MobileQuickActionButton(
+          text: LocaleKeys.shareAction_updatePathName.tr(),
+          icon: FlowySvgs.view_item_rename_s,
+          iconSize: const Size.square(18),
+          onTap: () => onAction(
+            MobileViewBottomSheetBodyAction.updatePathName,
+          ),
+        ),
+        _divider(),
         MobileQuickActionButton(
           text: LocaleKeys.shareAction_visitSite.tr(),
           icon: FlowySvgs.m_visit_site_s,
@@ -195,8 +250,38 @@ class MobileViewBottomSheetBody extends StatelessWidget {
     }
   }
 
-  Widget _divider() => const Divider(
-        height: 8.5,
-        thickness: 0.5,
-      );
+  Widget _divider() => const MobileQuickActionDivider();
+}
+
+class _LockPageRightIconBuilder extends StatelessWidget {
+  const _LockPageRightIconBuilder({
+    required this.onAction,
+  });
+
+  final MobileViewBottomSheetBodyActionCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLocked =
+        context.watch<ViewLockStatusBloc?>()?.state.isLocked ?? false;
+    return SizedBox(
+      width: 46,
+      height: 30,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: CupertinoSwitch(
+          value: isLocked,
+          activeTrackColor: Theme.of(context).colorScheme.primary,
+          onChanged: (value) {
+            onAction(
+              MobileViewBottomSheetBodyAction.lockPage,
+              arguments: {
+                MobileViewBottomSheetBodyActionArguments.isLockedKey: value,
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 }

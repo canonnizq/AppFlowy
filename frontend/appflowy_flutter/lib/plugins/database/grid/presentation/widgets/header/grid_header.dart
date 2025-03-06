@@ -7,7 +7,6 @@ import 'package:appflowy/plugins/database/grid/application/grid_header_bloc.dart
 import 'package:appflowy/plugins/database/tab_bar/tab_bar_view.dart';
 import 'package:appflowy_backend/log.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flowy_infra/size.dart';
 import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
@@ -22,11 +21,13 @@ class GridHeaderSliverAdaptor extends StatefulWidget {
   const GridHeaderSliverAdaptor({
     super.key,
     required this.viewId,
+    required this.shrinkWrap,
     required this.anchorScrollController,
   });
 
   final String viewId;
   final ScrollController anchorScrollController;
+  final bool shrinkWrap;
 
   @override
   State<GridHeaderSliverAdaptor> createState() =>
@@ -38,6 +39,9 @@ class _GridHeaderSliverAdaptorState extends State<GridHeaderSliverAdaptor> {
   Widget build(BuildContext context) {
     final fieldController =
         context.read<GridBloc>().databaseController.fieldController;
+    final horizontalPadding =
+        context.read<DatabasePluginWidgetBuilderSize?>()?.horizontalPadding ??
+            0.0;
     return BlocProvider(
       create: (context) {
         return GridHeaderBloc(
@@ -48,9 +52,14 @@ class _GridHeaderSliverAdaptorState extends State<GridHeaderSliverAdaptor> {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         controller: widget.anchorScrollController,
-        child: _GridHeader(
-          viewId: widget.viewId,
-          fieldController: fieldController,
+        child: Padding(
+          padding: widget.shrinkWrap
+              ? EdgeInsets.symmetric(horizontal: horizontalPadding)
+              : EdgeInsets.zero,
+          child: _GridHeader(
+            viewId: widget.viewId,
+            fieldController: fieldController,
+          ),
         ),
       ),
     );
@@ -154,11 +163,8 @@ class _CellTrailing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: BoxConstraints(
-        maxWidth: GridSize.newPropertyButtonWidth,
-        minHeight: GridSize.headerHeight,
-      ),
-      margin: EdgeInsets.only(right: GridSize.scrollBarSize + Insets.m),
+      width: GridSize.newPropertyButtonWidth,
+      height: GridSize.headerHeight,
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: AFThemeExtension.of(context).borderColor),

@@ -1,17 +1,19 @@
 import 'dart:io';
 
-import 'package:appflowy/workspace/presentation/home/menu/view/view_action_type.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/sub_page/sub_page_block_component.dart';
+import 'package:appflowy/shared/icon_emoji_picker/recent_icons.dart';
+import 'package:appflowy/workspace/presentation/home/menu/view/view_action_type.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import '../../shared/emoji.dart';
 import '../../shared/util.dart';
 
 // Test cases for the Document SubPageBlock that needs to be covered:
@@ -38,7 +40,14 @@ import '../../shared/util.dart';
 const _defaultPageName = "";
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() {
+    IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+    RecentIcons.enable = false;
+  });
+
+  tearDownAll(() {
+    RecentIcons.enable = true;
+  });
 
   group('Document SubPageBlock tests', () {
     testWidgets('Insert a new SubPageBlock from Slash menu items',
@@ -48,11 +57,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       expect(
         find.text(LocaleKeys.menuAppHeader_defaultNewPageName.tr()),
@@ -67,12 +71,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
-      await tester.pumpAndSettle();
 
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
@@ -91,11 +89,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
@@ -144,11 +137,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
@@ -203,11 +191,6 @@ void main() {
 
       await tester.insertSubPageFromSlashMenu();
 
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
-
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
 
@@ -243,11 +226,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
@@ -294,11 +272,6 @@ void main() {
 
       await tester.insertSubPageFromSlashMenu();
 
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
-
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
 
@@ -336,11 +309,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu(true);
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
@@ -385,11 +353,6 @@ void main() {
 
       await tester.insertSubPageFromSlashMenu();
 
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
-
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
       expect(find.byType(SubPageBlockComponent), findsOneWidget);
@@ -412,12 +375,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu();
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
-
       await tester.renamePageWithSecondary(_defaultPageName, 'Child page');
       expect(find.text('Child page'), findsNWidgets(2));
 
@@ -437,11 +394,6 @@ void main() {
       await tester.createNewPageWithNameUnderParent(name: 'SubPageBlock');
 
       await tester.insertSubPageFromSlashMenu(true);
-
-      await tester.expandOrCollapsePage(
-        pageName: 'SubPageBlock',
-        layout: ViewLayoutPB.Document,
-      );
 
       expect(find.byType(SubPageBlockComponent), findsOneWidget);
 
@@ -498,6 +450,43 @@ void main() {
       );
 
       expect(find.text('Parent'), findsNWidgets(2));
+    });
+
+    testWidgets('Displaying icon of subpage', (tester) async {
+      const firstPage = 'FirstPage';
+
+      await tester.initializeAppFlowy();
+      await tester.tapAnonymousSignInButton();
+      await tester.createNewPageWithNameUnderParent(name: firstPage);
+      final icon = await tester.loadIcon();
+
+      /// create subpage
+      await tester.editor.tapLineOfEditorAt(0);
+      await tester.editor.showSlashMenu();
+      await tester.editor.tapSlashMenuItemWithName(
+        LocaleKeys.document_slashMenu_subPage_name.tr(),
+        offset: 100,
+      );
+
+      /// add icon
+      await tester.editor.hoverOnCoverToolbar();
+      await tester.editor.tapAddIconButton();
+      await tester.tapIcon(icon);
+      await tester.pumpAndSettle();
+      await tester.openPage(firstPage);
+
+      await tester.expandOrCollapsePage(
+        pageName: firstPage,
+        layout: ViewLayoutPB.Document,
+      );
+
+      /// check if there is a icon in document
+      final iconWidget = find.byWidgetPredicate((w) {
+        if (w is! RawEmojiIconWidget) return false;
+        final iconData = w.emoji.emoji;
+        return iconData == icon.emoji;
+      });
+      expect(iconWidget, findsOneWidget);
     });
   });
 }

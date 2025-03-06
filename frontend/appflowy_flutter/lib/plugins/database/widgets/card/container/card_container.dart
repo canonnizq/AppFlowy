@@ -28,8 +28,7 @@ class RowCardContainer extends StatelessWidget {
       create: (_) => _CardContainerNotifier(),
       child: Consumer<_CardContainerNotifier>(
         builder: (context, notifier, _) {
-          final shouldBuildAccessory =
-              buildAccessoryWhen?.call() ?? true;
+          final shouldBuildAccessory = buildAccessoryWhen?.call() ?? true;
 
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -41,7 +40,7 @@ class RowCardContainer extends StatelessWidget {
               }
             },
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 42),
+              constraints: const BoxConstraints(minHeight: 36),
               child: _CardEnterRegion(
                 shouldBuildAccessory: shouldBuildAccessory,
                 accessories: accessories,
@@ -78,8 +77,8 @@ class _CardEnterRegion extends StatelessWidget {
           child,
           if (onEnter && shouldBuildAccessory)
             Positioned(
-              top: 10.0,
-              right: 10.0,
+              top: 7.0,
+              right: 7.0,
               child: CardAccessoryContainer(
                 accessories: accessories,
                 onTapAccessory: onTapAccessory,

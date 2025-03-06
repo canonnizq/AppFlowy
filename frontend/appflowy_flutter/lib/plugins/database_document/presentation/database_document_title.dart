@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/database/application/cell/bloc/text_cell_bloc.dart';
@@ -8,13 +6,17 @@ import 'package:appflowy/plugins/database/widgets/cell/editable_cell_builder.dar
 import 'package:appflowy/plugins/database/widgets/cell/editable_cell_skeleton/text.dart';
 import 'package:appflowy/plugins/database/widgets/row/cells/cell_container.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/base/emoji_picker_button.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
+import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/workspace/presentation/widgets/view_title_bar.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:collection/collection.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
 import 'database_document_title_bloc.dart';
 
 // This widget is largely copied from `workspace/presentation/widgets/view_title_bar.dart` intentionally instead of opting for an abstraction. We can make an abstraction after the view refactor is done and there's more clarity in that department.
@@ -139,6 +141,7 @@ class _TitleSkin extends IEditableTextCellSkin {
   Widget build(
     BuildContext context,
     CellContainerNotifier cellContainerNotifier,
+    ValueNotifier<bool> compactModeNotifier,
     TextCellBloc bloc,
     FocusNode focusNode,
     TextEditingController textEditingController,
@@ -164,27 +167,25 @@ class _TitleSkin extends IEditableTextCellSkin {
                 popupBuilder: (_) {
                   return RenameRowPopover(
                     textController: textEditingController,
-                    icon: state.icon ?? "",
-                    onUpdateIcon: (String icon) {
+                    icon: state.icon ?? EmojiIconData.none(),
+                    onUpdateIcon: (icon) {
                       context
                           .read<DatabaseDocumentTitleBloc>()
                           .add(DatabaseDocumentTitleEvent.updateIcon(icon));
                     },
                     onUpdateName: (text) =>
                         bloc.add(TextCellEvent.updateText(text)),
+                    tabs: const [PickerTabType.emoji],
                   );
                 },
                 child: FlowyButton(
                   useIntrinsicWidth: true,
                   onTap: () {},
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
                   text: Row(
                     children: [
                       if (state.icon != null) ...[
-                        FlowyText.emoji(
-                          state.icon!,
-                          fontSize: 14.0,
-                          figmaLineHeight: 18.0,
-                        ),
+                        RawEmojiIconWidget(emoji: state.icon!, emojiSize: 14),
                         const HSpace(4.0),
                       ],
                       ConstrainedBox(
@@ -192,6 +193,8 @@ class _TitleSkin extends IEditableTextCellSkin {
                         child: FlowyText.regular(
                           name,
                           overflow: TextOverflow.ellipsis,
+                          fontSize: 14.0,
+                          figmaLineHeight: 18.0,
                         ),
                       ),
                     ],
@@ -213,13 +216,15 @@ class RenameRowPopover extends StatefulWidget {
     required this.onUpdateName,
     required this.onUpdateIcon,
     required this.icon,
+    this.tabs = const [PickerTabType.emoji, PickerTabType.icon],
   });
 
   final TextEditingController textController;
-  final String icon;
+  final EmojiIconData icon;
 
-  final void Function(String name) onUpdateName;
-  final void Function(String icon) onUpdateIcon;
+  final ValueChanged<String> onUpdateName;
+  final ValueChanged<EmojiIconData> onUpdateIcon;
+  final List<PickerTabType> tabs;
 
   @override
   State<RenameRowPopover> createState() => _RenameRowPopoverState();
@@ -245,10 +250,11 @@ class _RenameRowPopoverState extends State<RenameRowPopover> {
           direction: PopoverDirection.bottomWithCenterAligned,
           offset: const Offset(0, 18),
           defaultIcon: const FlowySvg(FlowySvgs.document_s),
-          onSubmitted: (emoji, _) {
-            widget.onUpdateIcon(emoji);
-            PopoverContainer.of(context).close();
+          onSubmitted: (r, _) {
+            widget.onUpdateIcon(r.data);
+            if (!r.keepOpen) PopoverContainer.of(context).close();
           },
+          tabs: widget.tabs,
         ),
         const HSpace(6),
         SizedBox(

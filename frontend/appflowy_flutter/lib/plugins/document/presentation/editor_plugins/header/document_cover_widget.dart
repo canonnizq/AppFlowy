@@ -17,6 +17,7 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/migration/
 import 'package:appflowy/plugins/document/presentation/editor_style.dart';
 import 'package:appflowy/shared/appflowy_network_image.dart';
 import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
+import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/workspace/application/view/view_ext.dart';
 import 'package:appflowy/workspace/application/view/view_listener.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
@@ -73,12 +74,14 @@ class DocumentCoverWidget extends StatefulWidget {
     required this.editorState,
     required this.onIconChanged,
     required this.view,
+    required this.tabs,
   });
 
   final Node node;
   final EditorState editorState;
-  final void Function(String icon) onIconChanged;
+  final ValueChanged<EmojiIconData> onIconChanged;
   final ViewPB view;
+  final List<PickerTabType> tabs;
 
   @override
   State<DocumentCoverWidget> createState() => _DocumentCoverWidgetState();
@@ -88,23 +91,27 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
   CoverType get coverType => CoverType.fromString(
         widget.node.attributes[DocumentHeaderBlockKeys.coverType],
       );
+
   String? get coverDetails =>
       widget.node.attributes[DocumentHeaderBlockKeys.coverDetails];
+
   String? get icon => widget.node.attributes[DocumentHeaderBlockKeys.icon];
-  bool get hasIcon => viewIcon.isNotEmpty;
+
+  bool get hasIcon => viewIcon.emoji.isNotEmpty;
+
   bool get hasCover =>
       coverType != CoverType.none ||
       (cover != null && cover?.type != PageStyleCoverImageType.none);
+
   RenderBox? get _renderBox => context.findRenderObject() as RenderBox?;
 
-  String viewIcon = '';
+  EmojiIconData viewIcon = EmojiIconData.none();
+
   PageStyleCover? cover;
   late ViewPB view;
   late final ViewListener viewListener;
   int retryCount = 0;
 
-  final titleTextController = TextEditingController();
-  final titleFocusNode = FocusNode();
   final isCoverTitleHovered = ValueNotifier<bool>(false);
 
   late final gestureInterceptor = SelectionGestureInterceptor(
@@ -116,11 +123,10 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
   @override
   void initState() {
     super.initState();
-    final value = widget.view.icon.value;
-    viewIcon = value.isNotEmpty ? value : icon ?? '';
+    final icon = widget.view.icon;
+    viewIcon = EmojiIconData.fromViewIconPB(icon);
     cover = widget.view.cover;
     view = widget.view;
-    titleTextController.text = view.name;
     widget.node.addListener(_reload);
     widget.editorState.service.selectionService
         .registerGestureInterceptor(gestureInterceptor);
@@ -128,11 +134,8 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
     viewListener = ViewListener(viewId: widget.view.id)
       ..start(
         onViewUpdated: (view) {
-          if (titleTextController.text != view.name) {
-            titleTextController.text = view.name;
-          }
           setState(() {
-            viewIcon = view.icon.value;
+            viewIcon = EmojiIconData.fromViewIconPB(view.icon);
             cover = view.cover;
             view = view;
           });
@@ -144,8 +147,6 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
   void dispose() {
     viewListener.stop();
     widget.node.removeListener(_reload);
-    titleTextController.dispose();
-    titleFocusNode.dispose();
     isCoverTitleHovered.dispose();
     widget.editorState.service.selectionService
         .unregisterGestureInterceptor(_interceptorKey);
@@ -159,6 +160,7 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
         final offset = _calculateIconLeft(context, constraints);
         return Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Stack(
               children: [
@@ -172,6 +174,8 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
                     hasIcon: hasIcon,
                     offset: offset,
                     isCoverTitleHovered: isCoverTitleHovered,
+                    documentId: view.id,
+                    tabs: widget.tabs,
                   ),
                 ),
                 if (hasCover)
@@ -192,7 +196,7 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
+              padding: EdgeInsets.fromLTRB(offset, 0, offset, 12),
               child: MouseRegion(
                 onEnter: (event) => isCoverTitleHovered.value = true,
                 onExit: (event) => isCoverTitleHovered.value = false,
@@ -225,6 +229,7 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
         editorState: widget.editorState,
         node: widget.node,
         icon: viewIcon,
+        documentId: view.id,
         onChangeIcon: (icon) => _saveIconOrCover(icon: icon),
       ),
     );
@@ -276,7 +281,10 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
     return height;
   }
 
-  void _saveIconOrCover({(CoverType, String?)? cover, String? icon}) async {
+  void _saveIconOrCover({
+    (CoverType, String?)? cover,
+    EmojiIconData? icon,
+  }) async {
     final transaction = widget.editorState.transaction;
     final coverType = widget.node.attributes[DocumentHeaderBlockKeys.coverType];
     final coverDetails =
@@ -293,7 +301,7 @@ class _DocumentCoverWidgetState extends State<DocumentCoverWidget> {
       attributes[DocumentHeaderBlockKeys.coverDetails] = cover.$2;
     }
     if (icon != null) {
-      attributes[DocumentHeaderBlockKeys.icon] = icon;
+      attributes[DocumentHeaderBlockKeys.icon] = icon.emoji;
       widget.onIconChanged(icon);
     }
 
@@ -338,17 +346,21 @@ class DocumentHeaderToolbar extends StatefulWidget {
     required this.hasIcon,
     required this.onIconOrCoverChanged,
     required this.offset,
+    this.documentId,
     required this.isCoverTitleHovered,
+    required this.tabs,
   });
 
   final Node node;
   final EditorState editorState;
   final bool hasCover;
   final bool hasIcon;
-  final void Function({(CoverType, String?)? cover, String? icon})
+  final void Function({(CoverType, String?)? cover, EmojiIconData? icon})
       onIconOrCoverChanged;
   final double offset;
+  final String? documentId;
   final ValueNotifier<bool> isCoverTitleHovered;
+  final List<PickerTabType> tabs;
 
   @override
   State<DocumentHeaderToolbar> createState() => _DocumentHeaderToolbarState();
@@ -424,7 +436,7 @@ class _DocumentHeaderToolbarState extends State<DocumentHeaderToolbar> {
     if (widget.hasIcon) {
       children.add(
         FlowyButton(
-          onTap: () => widget.onIconOrCoverChanged(icon: ""),
+          onTap: () => widget.onIconOrCoverChanged(icon: EmojiIconData.none()),
           useIntrinsicWidth: true,
           leftIcon: const FlowySvg(FlowySvgs.add_icon_s),
           iconPadding: 4.0,
@@ -446,11 +458,11 @@ class _DocumentHeaderToolbarState extends State<DocumentHeaderToolbar> {
         onTap: UniversalPlatform.isDesktop
             ? null
             : () async {
-                final result = await context.push<EmojiPickerResult>(
+                final result = await context.push<EmojiIconData>(
                   MobileEmojiPickerScreen.routeName,
                 );
                 if (result != null) {
-                  widget.onIconOrCoverChanged(icon: result.emoji);
+                  widget.onIconOrCoverChanged(icon: result);
                 }
               },
       );
@@ -467,9 +479,11 @@ class _DocumentHeaderToolbarState extends State<DocumentHeaderToolbar> {
           popupBuilder: (BuildContext popoverContext) {
             isPopoverOpen = true;
             return FlowyIconEmojiPicker(
-              onSelectedEmoji: (result) {
-                widget.onIconOrCoverChanged(icon: result.emoji);
-                _popoverController.close();
+              tabs: widget.tabs,
+              documentId: widget.documentId,
+              onSelectedEmoji: (r) {
+                widget.onIconOrCoverChanged(icon: r.data);
+                if (!r.keepOpen) _popoverController.close();
               },
             );
           },
@@ -627,7 +641,7 @@ class DocumentCoverState extends State<DocumentCover> {
                     fillColor: Theme.of(context)
                         .colorScheme
                         .onSurfaceVariant
-                        .withOpacity(0.5),
+                        .withValues(alpha: 0.5),
                     height: 32,
                     title: LocaleKeys.document_plugins_cover_changeCover.tr(),
                   ),
@@ -713,8 +727,10 @@ class DocumentCoverState extends State<DocumentCover> {
                 onPressed: () => popoverController.show(),
                 hoverColor: Theme.of(context).colorScheme.surface,
                 textColor: Theme.of(context).colorScheme.tertiary,
-                fillColor:
-                    Theme.of(context).colorScheme.surface.withOpacity(0.5),
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: 0.5),
                 title: LocaleKeys.document_plugins_cover_changeCover.tr(),
               ),
             ),
@@ -762,15 +778,29 @@ class DocumentCoverState extends State<DocumentCover> {
   }
 
   Future<void> onCoverChanged(CoverType type, String? details) async {
-    if (type == CoverType.file && details != null && !isURL(details)) {
+    final previousType = CoverType.fromString(
+      widget.node.attributes[DocumentHeaderBlockKeys.coverType],
+    );
+    final previousDetails =
+        widget.node.attributes[DocumentHeaderBlockKeys.coverDetails];
+
+    bool isFileType(CoverType type, String? details) =>
+        type == CoverType.file && details != null && !isURL(details);
+
+    if (isFileType(type, details)) {
       if (_isLocalMode()) {
-        details = await saveImageToLocalStorage(details);
+        details = await saveImageToLocalStorage(details!);
       } else {
         // else we should save the image to cloud storage
-        (details, _) = await saveImageToCloudStorage(details, widget.view.id);
+        (details, _) = await saveImageToCloudStorage(details!, widget.view.id);
       }
     }
     widget.onChangeCover(type, details);
+
+    // After cover change,delete from localstorage if previous cover was image type
+    if (isFileType(previousType, previousDetails) && _isLocalMode()) {
+      await deleteImageFromLocalStorage(previousDetails);
+    }
   }
 
   void setOverlayButtonsHidden(bool value) {
@@ -794,8 +824,8 @@ class DeleteCoverButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fillColor = UniversalPlatform.isDesktopOrWeb
-        ? Theme.of(context).colorScheme.surface.withOpacity(0.5)
-        : Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5);
+        ? Theme.of(context).colorScheme.surface.withValues(alpha: 0.5)
+        : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5);
     final svgColor = UniversalPlatform.isDesktopOrWeb
         ? Theme.of(context).colorScheme.tertiary
         : Theme.of(context).colorScheme.onPrimary;
@@ -821,12 +851,14 @@ class DocumentIcon extends StatefulWidget {
     required this.editorState,
     required this.icon,
     required this.onChangeIcon,
+    this.documentId,
   });
 
   final Node node;
   final EditorState editorState;
-  final String icon;
-  final void Function(String icon) onChangeIcon;
+  final EmojiIconData icon;
+  final String? documentId;
+  final ValueChanged<EmojiIconData> onChangeIcon;
 
   @override
   State<DocumentIcon> createState() => _DocumentIconState();
@@ -837,9 +869,7 @@ class _DocumentIconState extends State<DocumentIcon> {
 
   @override
   Widget build(BuildContext context) {
-    Widget child = EmojiIconWidget(
-      emoji: widget.icon,
-    );
+    Widget child = EmojiIconWidget(emoji: widget.icon);
 
     if (UniversalPlatform.isDesktopOrWeb) {
       child = AppFlowyPopover(
@@ -851,9 +881,16 @@ class _DocumentIconState extends State<DocumentIcon> {
         child: child,
         popupBuilder: (BuildContext popoverContext) {
           return FlowyIconEmojiPicker(
-            onSelectedEmoji: (result) {
-              widget.onChangeIcon(result.emoji);
-              _popoverController.close();
+            initialType: widget.icon.type.toPickerTabType(),
+            tabs: const [
+              PickerTabType.emoji,
+              PickerTabType.icon,
+              PickerTabType.custom,
+            ],
+            documentId: widget.documentId,
+            onSelectedEmoji: (r) {
+              widget.onChangeIcon(r.data);
+              if (!r.keepOpen) _popoverController.close();
             },
           );
         },
@@ -862,11 +899,16 @@ class _DocumentIconState extends State<DocumentIcon> {
       child = GestureDetector(
         child: child,
         onTap: () async {
-          final result = await context.push<EmojiPickerResult>(
-            MobileEmojiPickerScreen.routeName,
+          final result = await context.push<EmojiIconData>(
+            Uri(
+              path: MobileEmojiPickerScreen.routeName,
+              queryParameters: {
+                MobileEmojiPickerScreen.iconSelectedType: widget.icon.type.name,
+              },
+            ).toString(),
           );
           if (result != null) {
-            widget.onChangeIcon(result.emoji);
+            widget.onChangeIcon(result);
           }
         },
       );

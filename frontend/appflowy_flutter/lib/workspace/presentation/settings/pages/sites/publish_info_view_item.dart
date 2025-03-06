@@ -1,4 +1,6 @@
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
 import 'package:appflowy/util/string_extension.dart';
 import 'package:appflowy/workspace/application/view/view_ext.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/protobuf.dart';
@@ -13,16 +15,22 @@ class PublishInfoViewItem extends StatelessWidget {
     this.onTap,
     this.useIntrinsicWidth = true,
     this.margin,
+    this.extraTooltipMessage,
   });
 
   final PublishInfoViewPB publishInfoView;
   final VoidCallback? onTap;
   final bool useIntrinsicWidth;
   final EdgeInsets? margin;
+  final String? extraTooltipMessage;
 
   @override
   Widget build(BuildContext context) {
-    final name = publishInfoView.view.name;
+    final name = publishInfoView.view.name.orDefault(
+      LocaleKeys.menuAppHeader_defaultNewPageName.tr(),
+    );
+    final tooltipMessage =
+        extraTooltipMessage != null ? '$extraTooltipMessage\n$name' : name;
     return Container(
       alignment: Alignment.centerLeft,
       child: FlowyButton(
@@ -30,13 +38,14 @@ class PublishInfoViewItem extends StatelessWidget {
         useIntrinsicWidth: useIntrinsicWidth,
         mainAxisAlignment: MainAxisAlignment.start,
         leftIcon: _buildIcon(),
-        text: FlowyText.regular(
-          name.orDefault(
-            LocaleKeys.menuAppHeader_defaultNewPageName.tr(),
+        text: FlowyTooltip(
+          message: tooltipMessage,
+          child: FlowyText.regular(
+            name,
+            fontSize: 14.0,
+            figmaLineHeight: 18.0,
+            overflow: TextOverflow.ellipsis,
           ),
-          fontSize: 14.0,
-          figmaLineHeight: 18.0,
-          overflow: TextOverflow.ellipsis,
         ),
         onTap: onTap,
       ),
@@ -44,13 +53,9 @@ class PublishInfoViewItem extends StatelessWidget {
   }
 
   Widget _buildIcon() {
-    final icon = publishInfoView.view.icon.value;
+    final icon = publishInfoView.view.icon.toEmojiIconData();
     return icon.isNotEmpty
-        ? FlowyText.emoji(
-            icon,
-            fontSize: 16.0,
-            figmaLineHeight: 18.0,
-          )
+        ? RawEmojiIconWidget(emoji: icon, emojiSize: 16.0)
         : publishInfoView.view.defaultIcon();
   }
 }

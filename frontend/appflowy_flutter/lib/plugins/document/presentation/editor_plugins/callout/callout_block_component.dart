@@ -1,5 +1,7 @@
 import 'package:appflowy/generated/locale_keys.g.dart' show LocaleKeys;
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
+import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:easy_localization/easy_localization.dart'
     show StringTranslateExtension;
@@ -32,17 +34,22 @@ class CalloutBlockKeys {
   ///
   /// The value is a String.
   static const String icon = 'icon';
+
+  /// the type of [FlowyIconType]
+  static const String iconType = 'icon_type';
 }
 
 // The one is inserted through selection menu
 Node calloutNode({
   Delta? delta,
-  String emoji = '📌',
+  EmojiIconData? emoji,
   Color? defaultColor,
 }) {
+  final defaultEmoji = emoji ?? EmojiIconData.emoji('📌');
   final attributes = {
     CalloutBlockKeys.delta: (delta ?? Delta()).toJson(),
-    CalloutBlockKeys.icon: emoji,
+    CalloutBlockKeys.icon: defaultEmoji.emoji,
+    CalloutBlockKeys.iconType: defaultEmoji.type,
     CalloutBlockKeys.backgroundColor: defaultColor?.toHex(),
   };
   return Node(
@@ -155,12 +162,20 @@ class _CalloutBlockComponentWidgetState
   }
 
   // get the emoji of the note block from the node's attributes or default to '📌'
-  String get emoji {
+  EmojiIconData get emoji {
     final icon = node.attributes[CalloutBlockKeys.icon];
-    if (icon == null || icon.isEmpty) {
-      return '📌';
+    final type =
+        node.attributes[CalloutBlockKeys.iconType] ?? FlowyIconType.emoji;
+    EmojiIconData result = EmojiIconData.emoji('📌');
+    try {
+      result = EmojiIconData(FlowyIconType.values.byName(type), icon);
+    } catch (e) {
+      Log.error(
+        'get emoji error with icon:[$icon], type:[$type] within alloutBlockComponentWidget',
+        e,
+      );
     }
-    return icon;
+    return result;
   }
 
   // get access to the editor state via provider
@@ -192,16 +207,19 @@ class _CalloutBlockComponentWidgetState
           // the emoji picker button for the note
           EmojiPickerButton(
             // force to refresh the popover state
-            key: ValueKey(widget.node.id + emoji),
+            key: ValueKey(widget.node.id + emoji.emoji),
             enable: editorState.editable,
             title: '',
+            margin: UniversalPlatform.isMobile
+                ? const EdgeInsets.symmetric(vertical: 2.0, horizontal: 10.0)
+                : EdgeInsets.zero,
             emoji: emoji,
             emojiSize: emojiSize,
             showBorder: false,
             buttonSize: emojiButtonSize,
-            onSubmitted: (emoji, controller) {
-              setEmoji(emoji);
-              controller?.close();
+            onSubmitted: (r, controller) {
+              setEmojiIconData(r.data);
+              if (!r.keepOpen) controller?.close();
             },
           ),
           if (UniversalPlatform.isDesktopOrWeb) const HSpace(4.0),
@@ -255,11 +273,12 @@ class _CalloutBlockComponentWidgetState
       node: widget.node,
       editorState: editorState,
       placeholderText: placeholderText,
+      textAlign: alignment?.toTextAlign ?? textAlign,
       textSpanDecorator: (textSpan) => textSpan.updateTextStyle(
-        textStyle,
+        textStyleWithTextSpan(textSpan: textSpan),
       ),
       placeholderTextSpanDecorator: (textSpan) => textSpan.updateTextStyle(
-        placeholderTextStyle,
+        placeholderTextStyleWithTextSpan(textSpan: textSpan),
       ),
       textDirection: textDirection,
       cursorColor: editorState.editorStyle.cursorColor,
@@ -268,10 +287,11 @@ class _CalloutBlockComponentWidgetState
   }
 
   // set the emoji of the note block
-  Future<void> setEmoji(String emoji) async {
+  Future<void> setEmojiIconData(EmojiIconData data) async {
     final transaction = editorState.transaction
       ..updateNode(node, {
-        CalloutBlockKeys.icon: emoji,
+        CalloutBlockKeys.icon: data.emoji,
+        CalloutBlockKeys.iconType: data.type.name,
       })
       ..afterSelection = Selection.collapsed(
         Position(path: node.path, offset: node.delta?.length ?? 0),

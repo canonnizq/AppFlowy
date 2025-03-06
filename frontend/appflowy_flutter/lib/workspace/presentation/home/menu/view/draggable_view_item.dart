@@ -65,6 +65,11 @@ class _DraggableViewItemState extends State<DraggableViewItem> {
       onMove: (data) {
         final renderBox = context.findRenderObject() as RenderBox;
         final offset = renderBox.globalToLocal(data.offset);
+
+        if (offset.dx > renderBox.size.width) {
+          return;
+        }
+
         final position = _computeHoverPosition(offset, renderBox.size);
         if (!_shouldAccept(data.data, position)) {
           return;
@@ -106,7 +111,8 @@ class _DraggableViewItemState extends State<DraggableViewItem> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6.0),
             color: position == DraggableHoverPosition.center
-                ? widget.centerHighlightColor ?? hoverColor.withOpacity(0.5)
+                ? widget.centerHighlightColor ??
+                    hoverColor.withValues(alpha: 0.5)
                 : Colors.transparent,
           ),
           child: widget.child,
@@ -145,7 +151,10 @@ class _DraggableViewItemState extends State<DraggableViewItem> {
             borderRadius: BorderRadius.circular(4.0),
             color: position == DraggableHoverPosition.center
                 ? widget.centerHighlightColor ??
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.5)
+                    Theme.of(context)
+                        .colorScheme
+                        .secondary
+                        .withValues(alpha: 0.5)
                 : Colors.transparent,
           ),
           child: widget.child,

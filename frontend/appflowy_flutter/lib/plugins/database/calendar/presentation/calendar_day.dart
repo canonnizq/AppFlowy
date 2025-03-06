@@ -242,6 +242,7 @@ class NewEventButton extends StatelessWidget {
             hoverColor: AFThemeExtension.of(context).lightGreyHover,
             width: 22,
             tooltipText: LocaleKeys.calendar_newEventButtonTooltip.tr(),
+            radius: Corners.s6Border,
             decoration: BoxDecoration(
               border: Border.fromBorderSide(
                 BorderSide(
@@ -251,20 +252,20 @@ class NewEventButton extends StatelessWidget {
                   width: 0.5,
                 ),
               ),
-              borderRadius: Corners.s5Border,
+              borderRadius: Corners.s6Border,
               boxShadow: [
                 BoxShadow(
                   spreadRadius: -2,
-                  color: const Color(0xFF1F2329).withOpacity(0.02),
+                  color: const Color(0xFF1F2329).withValues(alpha: 0.02),
                   blurRadius: 2,
                 ),
                 BoxShadow(
-                  color: const Color(0xFF1F2329).withOpacity(0.02),
+                  color: const Color(0xFF1F2329).withValues(alpha: 0.02),
                   blurRadius: 4,
                 ),
                 BoxShadow(
                   spreadRadius: 2,
-                  color: const Color(0xFF1F2329).withOpacity(0.02),
+                  color: const Color(0xFF1F2329).withValues(alpha: 0.02),
                   blurRadius: 8,
                 ),
               ],

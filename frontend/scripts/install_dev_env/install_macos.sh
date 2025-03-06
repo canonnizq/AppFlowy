@@ -41,9 +41,9 @@ printMessage "Setting up Flutter"
 
 # Get the current Flutter version
 FLUTTER_VERSION=$(flutter --version | grep -oE 'Flutter [^ ]+' | grep -oE '[^ ]+$')
-# Check if the current version is 3.22.0
-if [ "$FLUTTER_VERSION" = "3.22.0" ]; then
-   echo "Flutter version is already 3.22.0"
+# Check if the current version is 3.27.4
+if [ "$FLUTTER_VERSION" = "3.27.4" ]; then
+   echo "Flutter version is already 3.27.4"
 else
    # Get the path to the Flutter SDK
    FLUTTER_PATH=$(which flutter)
@@ -52,12 +52,12 @@ else
    current_dir=$(pwd)
 
    cd $FLUTTER_PATH
-   # Use git to checkout version 3.22.0 of Flutter
-   git checkout 3.22.0
+   # Use git to checkout version 3.27.4 of Flutter
+   git checkout 3.27.4
    # Get back to current working directory
    cd "$current_dir"
 
-   echo "Switched to Flutter version 3.22.0"
+   echo "Switched to Flutter version 3.27.4"
 fi
 
 # Enable linux desktop
@@ -86,7 +86,7 @@ cargo install --force cargo-make
 
 # Install duckscript
 printMessage "Installing duckscript."
-cargo install --force duckscript_cli
+cargo install --force --locked duckscript_cli
 
 # Check prerequisites
 printMessage "Checking prerequisites."

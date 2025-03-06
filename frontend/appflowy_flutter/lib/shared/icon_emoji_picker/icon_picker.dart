@@ -5,8 +5,10 @@ import 'package:appflowy/core/helpers/url_launcher.dart';
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/base/string_extension.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
 import 'package:appflowy/shared/icon_emoji_picker/icon.dart';
 import 'package:appflowy/shared/icon_emoji_picker/icon_search_bar.dart';
+import 'package:appflowy/shared/icon_emoji_picker/recent_icons.dart';
 import 'package:appflowy/util/debounce.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/space_icon_popup.dart';
 import 'package:appflowy_backend/log.dart';
@@ -22,6 +24,7 @@ import 'icon_color_picker.dart';
 
 // cache the icon groups to avoid loading them multiple times
 List<IconGroup>? kIconGroups;
+const _kRecentIconGroupName = 'Recent';
 
 extension IconGroupFilter on List<IconGroup> {
   String? findSvgContent(String key) {
@@ -72,36 +75,83 @@ Future<List<IconGroup>> loadIconGroups() async {
   }
 }
 
+class IconPickerResult {
+  IconPickerResult(this.data, this.isRandom);
+
+  final IconsData data;
+  final bool isRandom;
+}
+
+extension IconsDataToIconPickerResultExtension on IconsData {
+  IconPickerResult toResult({bool isRandom = false}) =>
+      IconPickerResult(this, isRandom);
+}
+
 class FlowyIconPicker extends StatefulWidget {
   const FlowyIconPicker({
     super.key,
     required this.onSelectedIcon,
     required this.enableBackgroundColorSelection,
+    this.iconPerLine = 9,
+    this.ensureFocus = false,
   });
 
   final bool enableBackgroundColorSelection;
-  final void Function(IconGroup group, Icon icon, String? color) onSelectedIcon;
+  final ValueChanged<IconPickerResult> onSelectedIcon;
+  final int iconPerLine;
+  final bool ensureFocus;
 
   @override
   State<FlowyIconPicker> createState() => _FlowyIconPickerState();
 }
 
 class _FlowyIconPickerState extends State<FlowyIconPicker> {
-  late final Future<List<IconGroup>> iconGroups;
+  final List<IconGroup> iconGroups = [];
+  bool loaded = false;
   final ValueNotifier<String> keyword = ValueNotifier('');
   final debounce = Debounce(duration: const Duration(milliseconds: 150));
+
+  Future<void> loadIcons() async {
+    final localIcons = await loadIconGroups();
+    final recentIcons = await RecentIcons.getIcons();
+    if (recentIcons.isNotEmpty) {
+      final filterRecentIcons = recentIcons
+          .sublist(
+            0,
+            min(recentIcons.length, widget.iconPerLine),
+          )
+          .skipWhile((e) => e.groupName.isEmpty)
+          .map((e) => e.icon)
+          .toList();
+      if (filterRecentIcons.isNotEmpty) {
+        iconGroups.add(
+          IconGroup(
+            name: _kRecentIconGroupName,
+            icons: filterRecentIcons,
+          ),
+        );
+      }
+    }
+    iconGroups.addAll(localIcons);
+    if (mounted) {
+      setState(() {
+        loaded = true;
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-
-    iconGroups = loadIconGroups();
+    loadIcons();
   }
 
   @override
   void dispose() {
     keyword.dispose();
     debounce.dispose();
+    iconGroups.clear();
+    loaded = false;
     super.dispose();
   }
 
@@ -113,13 +163,23 @@ class _FlowyIconPickerState extends State<FlowyIconPicker> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: IconSearchBar(
+            ensureFocus: widget.ensureFocus,
             onRandomTap: () {
               final value = kIconGroups?.randomIcon();
               if (value == null) {
                 return;
               }
-              final color = generateRandomSpaceColor();
-              widget.onSelectedIcon(value.$1, value.$2, color);
+              final color = widget.enableBackgroundColorSelection
+                  ? generateRandomSpaceColor()
+                  : null;
+              widget.onSelectedIcon(
+                IconsData(
+                  value.$1.name,
+                  value.$2.name,
+                  color,
+                ).toResult(isRandom: true),
+              );
+              RecentIcons.putIcon(RecentIcon(value.$2, value.$1.name));
             },
             onKeywordChanged: (keyword) => {
               debounce.call(() {
@@ -129,24 +189,15 @@ class _FlowyIconPickerState extends State<FlowyIconPicker> {
           ),
         ),
         Expanded(
-          child: kIconGroups != null
-              ? _buildIcons(kIconGroups!)
-              : FutureBuilder(
-                  future: iconGroups,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(
-                        child: SizedBox.square(
-                          dimension: 24.0,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.0,
-                          ),
-                        ),
-                      );
-                    }
-                    final iconGroups = snapshot.data as List<IconGroup>;
-                    return _buildIcons(iconGroups);
-                  },
+          child: loaded
+              ? _buildIcons(iconGroups)
+              : const Center(
+                  child: SizedBox.square(
+                    dimension: 24.0,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.0,
+                    ),
+                  ),
                 ),
         ),
       ],
@@ -166,17 +217,51 @@ class _FlowyIconPickerState extends State<FlowyIconPicker> {
             iconGroups: filteredIconGroups,
             enableBackgroundColorSelection:
                 widget.enableBackgroundColorSelection,
-            onSelectedIcon: widget.onSelectedIcon,
+            onSelectedIcon: (r) => widget.onSelectedIcon.call(r.toResult()),
+            iconPerLine: widget.iconPerLine,
           );
         }
         return IconPicker(
           iconGroups: iconGroups,
           enableBackgroundColorSelection: widget.enableBackgroundColorSelection,
-          onSelectedIcon: widget.onSelectedIcon,
+          onSelectedIcon: (r) => widget.onSelectedIcon.call(r.toResult()),
+          iconPerLine: widget.iconPerLine,
         );
       },
     );
   }
+}
+
+class IconsData {
+  IconsData(this.groupName, this.iconName, this.color);
+
+  final String groupName;
+  final String iconName;
+  final String? color;
+
+  String get iconString => jsonEncode({
+        'groupName': groupName,
+        'iconName': iconName,
+        if (color != null) 'color': color,
+      });
+
+  EmojiIconData toEmojiIconData() => EmojiIconData.icon(this);
+
+  IconsData noColor() => IconsData(groupName, iconName, null);
+
+  static IconsData fromJson(dynamic json) {
+    return IconsData(
+      json['groupName'],
+      json['iconName'],
+      json['color'],
+    );
+  }
+
+  String? get svgString => kIconGroups
+      ?.firstWhereOrNull((group) => group.name == groupName)
+      ?.icons
+      .firstWhereOrNull((icon) => icon.name == iconName)
+      ?.content;
 }
 
 class IconPicker extends StatefulWidget {
@@ -185,11 +270,13 @@ class IconPicker extends StatefulWidget {
     required this.onSelectedIcon,
     required this.enableBackgroundColorSelection,
     required this.iconGroups,
+    required this.iconPerLine,
   });
 
   final List<IconGroup> iconGroups;
+  final int iconPerLine;
   final bool enableBackgroundColorSelection;
-  final void Function(IconGroup group, Icon icon, String? color) onSelectedIcon;
+  final ValueChanged<IconsData> onSelectedIcon;
 
   @override
   State<IconPicker> createState() => _IconPickerState();
@@ -197,54 +284,118 @@ class IconPicker extends StatefulWidget {
 
 class _IconPickerState extends State<IconPicker> {
   final mutex = PopoverMutex();
+  PopoverController? childPopoverController;
+
+  @override
+  void dispose() {
+    super.dispose();
+    childPopoverController = null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: widget.iconGroups.length,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      itemBuilder: (context, index) {
-        final iconGroup = widget.iconGroups[index];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FlowyText(
-              iconGroup.displayName.capitalize(),
-              fontSize: 12,
-              figmaLineHeight: 18.0,
-              color: context.pickerTextColor,
-            ),
-            const VSpace(4.0),
-            Wrap(
-              children: iconGroup.icons.map(
-                (icon) {
-                  return widget.enableBackgroundColorSelection
-                      ? _Icon(
-                          icon: icon,
-                          mutex: mutex,
-                          onSelectedColor: (context, color) {
-                            widget.onSelectedIcon(iconGroup, icon, color);
-                            PopoverContainer.of(context).close();
-                          },
-                        )
-                      : _IconNoBackground(
-                          icon: icon,
-                          onSelectedIcon: () {
-                            widget.onSelectedIcon(iconGroup, icon, null);
-                          },
-                        );
-                },
-              ).toList(),
-            ),
-            const VSpace(12.0),
-            if (index == widget.iconGroups.length - 1) ...[
-              const _StreamlinePermit(),
-              const VSpace(12.0),
-            ],
-          ],
-        );
-      },
+    return GestureDetector(
+      onTap: hideColorSelector,
+      child: NotificationListener(
+        onNotification: (notificationInfo) {
+          if (notificationInfo is ScrollStartNotification) {
+            hideColorSelector();
+          }
+          return true;
+        },
+        child: ListView.builder(
+          itemCount: widget.iconGroups.length,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          itemBuilder: (context, index) {
+            final iconGroup = widget.iconGroups[index];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FlowyText(
+                  iconGroup.displayName.capitalize(),
+                  fontSize: 12,
+                  figmaLineHeight: 18.0,
+                  color: context.pickerTextColor,
+                ),
+                const VSpace(4.0),
+                GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: widget.iconPerLine,
+                  ),
+                  itemCount: iconGroup.icons.length,
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  itemBuilder: (context, index) {
+                    final icon = iconGroup.icons[index];
+                    return widget.enableBackgroundColorSelection
+                        ? _Icon(
+                            icon: icon,
+                            mutex: mutex,
+                            onOpen: (childPopoverController) {
+                              this.childPopoverController =
+                                  childPopoverController;
+                            },
+                            onSelectedColor: (context, color) {
+                              String groupName = iconGroup.name;
+                              if (groupName == _kRecentIconGroupName) {
+                                groupName = getGroupName(index);
+                              }
+                              widget.onSelectedIcon(
+                                IconsData(
+                                  groupName,
+                                  icon.name,
+                                  color,
+                                ),
+                              );
+                              RecentIcons.putIcon(RecentIcon(icon, groupName));
+                              PopoverContainer.of(context).close();
+                            },
+                          )
+                        : _IconNoBackground(
+                            icon: icon,
+                            onSelectedIcon: () {
+                              String groupName = iconGroup.name;
+                              if (groupName == _kRecentIconGroupName) {
+                                groupName = getGroupName(index);
+                              }
+                              widget.onSelectedIcon(
+                                IconsData(
+                                  groupName,
+                                  icon.name,
+                                  null,
+                                ),
+                              );
+                              RecentIcons.putIcon(RecentIcon(icon, groupName));
+                            },
+                          );
+                  },
+                ),
+                const VSpace(12.0),
+                if (index == widget.iconGroups.length - 1) ...[
+                  const StreamlinePermit(),
+                  const VSpace(12.0),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
     );
+  }
+
+  void hideColorSelector() {
+    childPopoverController?.close();
+    childPopoverController = null;
+  }
+
+  String getGroupName(int index) {
+    final recentIcons = RecentIcons.getIconsSync();
+    try {
+      return recentIcons[index].groupName;
+    } catch (e) {
+      Log.error('getGroupName with index: $index error', e);
+      return '';
+    }
   }
 }
 
@@ -252,9 +403,11 @@ class _IconNoBackground extends StatelessWidget {
   const _IconNoBackground({
     required this.icon,
     required this.onSelectedIcon,
+    this.isSelected = false,
   });
 
   final Icon icon;
+  final bool isSelected;
   final VoidCallback onSelectedIcon;
 
   @override
@@ -263,6 +416,7 @@ class _IconNoBackground extends StatelessWidget {
       message: icon.displayName,
       preferBelow: false,
       child: FlowyButton(
+        isSelected: isSelected,
         useIntrinsicWidth: true,
         onTap: () => onSelectedIcon(),
         margin: const EdgeInsets.all(8.0),
@@ -284,11 +438,13 @@ class _Icon extends StatefulWidget {
     required this.icon,
     required this.mutex,
     required this.onSelectedColor,
+    this.onOpen,
   });
 
   final Icon icon;
   final PopoverMutex mutex;
   final void Function(BuildContext context, String color) onSelectedColor;
+  final ValueChanged<PopoverController>? onOpen;
 
   @override
   State<_Icon> createState() => _IconState();
@@ -296,16 +452,33 @@ class _Icon extends StatefulWidget {
 
 class _IconState extends State<_Icon> {
   final PopoverController _popoverController = PopoverController();
+  bool isSelected = false;
+
+  @override
+  void dispose() {
+    super.dispose();
+    _popoverController.close();
+  }
 
   @override
   Widget build(BuildContext context) {
     return AppFlowyPopover(
       direction: PopoverDirection.bottomWithCenterAligned,
+      controller: _popoverController,
       offset: const Offset(0, 6),
       mutex: widget.mutex,
+      onClose: () {
+        updateIsSelected(false);
+      },
+      clickHandler: PopoverClickHandler.gestureDetector,
       child: _IconNoBackground(
         icon: widget.icon,
-        onSelectedIcon: () => _popoverController.show(),
+        isSelected: isSelected,
+        onSelectedIcon: () {
+          updateIsSelected(true);
+          _popoverController.show();
+          widget.onOpen?.call(_popoverController);
+        },
       ),
       popupBuilder: (context) {
         return Container(
@@ -317,10 +490,18 @@ class _IconState extends State<_Icon> {
       },
     );
   }
+
+  void updateIsSelected(bool isSelected) {
+    setState(() {
+      this.isSelected = isSelected;
+    });
+  }
 }
 
-class _StreamlinePermit extends StatelessWidget {
-  const _StreamlinePermit();
+class StreamlinePermit extends StatelessWidget {
+  const StreamlinePermit({
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

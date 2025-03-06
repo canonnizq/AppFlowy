@@ -1,9 +1,9 @@
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
-import 'package:appflowy/plugins/database/widgets/cell/editable_cell_skeleton/date.dart';
-import 'package:appflowy/plugins/database/widgets/row/cells/cell_container.dart';
 import 'package:appflowy/plugins/database/application/cell/bloc/date_cell_bloc.dart';
+import 'package:appflowy/plugins/database/widgets/cell/editable_cell_skeleton/date.dart';
 import 'package:appflowy/plugins/database/widgets/cell_editor/date_cell_editor.dart';
+import 'package:appflowy/plugins/database/widgets/row/cells/cell_container.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ class DesktopRowDetailDateCellSkin extends IEditableDateCellSkin {
   Widget build(
     BuildContext context,
     CellContainerNotifier cellContainerNotifier,
+    ValueNotifier<bool> compactModeNotifier,
     DateCellBloc bloc,
     DateCellState state,
     PopoverController popoverController,
@@ -31,6 +32,7 @@ class DesktopRowDetailDateCellSkin extends IEditableDateCellSkin {
       direction: PopoverDirection.bottomWithLeftAligned,
       constraints: BoxConstraints.loose(const Size(260, 620)),
       margin: EdgeInsets.zero,
+      asBarrier: true,
       child: Container(
         alignment: AlignmentDirectional.centerStart,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

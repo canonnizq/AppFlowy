@@ -53,16 +53,19 @@ class BaseStyledBtnState extends State<BaseStyledButton> {
   void initState() {
     super.initState();
     _focusNode = FocusNode(debugLabel: '', canRequestFocus: true);
-    _focusNode.addListener(() {
-      if (_focusNode.hasFocus != _isFocused) {
-        setState(() => _isFocused = _focusNode.hasFocus);
-        widget.onFocusChanged?.call(_isFocused);
-      }
-    });
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (_focusNode.hasFocus != _isFocused) {
+      setState(() => _isFocused = _focusNode.hasFocus);
+      widget.onFocusChanged?.call(_isFocused);
+    }
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -118,7 +121,7 @@ class BaseStyledBtnState extends State<BaseStyledButton> {
         fillColor: Colors.transparent,
         hoverColor: widget.hoverColor ?? Colors.transparent,
         highlightColor: widget.highlightColor ?? Colors.transparent,
-        focusColor: widget.focusColor ?? Colors.grey.withOpacity(0.35),
+        focusColor: widget.focusColor ?? Colors.grey.withValues(alpha: 0.35),
         constraints: BoxConstraints(
             minHeight: widget.minHeight ?? 0, minWidth: widget.minWidth ?? 0),
         onPressed: widget.onPressed,

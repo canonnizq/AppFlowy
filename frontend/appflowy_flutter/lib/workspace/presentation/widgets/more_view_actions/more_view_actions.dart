@@ -4,10 +4,13 @@ import 'package:appflowy/workspace/application/settings/appearance/appearance_cu
 import 'package:appflowy/workspace/application/sidebar/space/space_bloc.dart';
 import 'package:appflowy/workspace/application/user/user_workspace_bloc.dart';
 import 'package:appflowy/workspace/application/view/view_bloc.dart';
+import 'package:appflowy/workspace/application/view/view_ext.dart';
+import 'package:appflowy/workspace/application/view/view_lock_status_bloc.dart';
 import 'package:appflowy/workspace/application/view_info/view_info_bloc.dart';
 import 'package:appflowy/workspace/presentation/home/menu/view/view_action_type.dart';
 import 'package:appflowy/workspace/presentation/widgets/more_view_actions/widgets/common_view_action.dart';
 import 'package:appflowy/workspace/presentation/widgets/more_view_actions/widgets/font_size_action.dart';
+import 'package:appflowy/workspace/presentation/widgets/more_view_actions/widgets/lock_page_action.dart';
 import 'package:appflowy/workspace/presentation/widgets/more_view_actions/widgets/view_meta_info.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
@@ -21,14 +24,16 @@ class MoreViewActions extends StatefulWidget {
   const MoreViewActions({
     super.key,
     required this.view,
-    this.isDocument = true,
+    this.customActions = const [],
   });
 
   /// The view to show the actions for.
+  ///
   final ViewPB view;
 
-  /// If false the view is a Database, otherwise it is a Document.
-  final bool isDocument;
+  /// Custom actions to show in the popover, will be laid out at the top.
+  ///
+  final List<Widget> customActions;
 
   @override
   State<MoreViewActions> createState() => _MoreViewActionsState();
@@ -49,8 +54,9 @@ class _MoreViewActionsState extends State<MoreViewActions> {
       builder: (context, state) {
         return AppFlowyPopover(
           mutex: popoverMutex,
-          constraints: const BoxConstraints(maxWidth: 220),
-          offset: const Offset(0, 42),
+          constraints: const BoxConstraints(maxWidth: 245),
+          direction: PopoverDirection.bottomWithRightAligned,
+          offset: const Offset(0, 12),
           popupBuilder: (_) => _buildPopup(state),
           child: const _ThreeDots(),
         );
@@ -58,18 +64,23 @@ class _MoreViewActionsState extends State<MoreViewActions> {
     );
   }
 
-  Widget _buildPopup(ViewInfoState state) {
+  Widget _buildPopup(ViewInfoState viewInfoState) {
     final userWorkspaceBloc = context.read<UserWorkspaceBloc>();
     final userProfile = userWorkspaceBloc.userProfile;
     final workspaceId =
         userWorkspaceBloc.state.currentWorkspace?.workspaceId ?? '';
-    final actions = _buildActions(state);
 
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (_) =>
-              ViewBloc(view: widget.view)..add(const ViewEvent.initial()),
+          create: (_) => ViewBloc(view: widget.view)
+            ..add(
+              const ViewEvent.initial(),
+            ),
+        ),
+        BlocProvider(
+          create: (_) => ViewLockStatusBloc(view: widget.view)
+            ..add(ViewLockStatusEvent.initial()),
         ),
         BlocProvider(
           create: (context) => SpaceBloc(
@@ -80,47 +91,71 @@ class _MoreViewActionsState extends State<MoreViewActions> {
             ),
         ),
       ],
-      child: BlocBuilder<SpaceBloc, SpaceState>(
-        builder: (context, state) {
-          if (state.spaces.isEmpty &&
-              userProfile.authenticator == AuthenticatorPB.AppFlowyCloud) {
-            return const SizedBox.shrink();
-          }
+      child: BlocBuilder<ViewBloc, ViewState>(
+        builder: (context, viewState) {
+          return BlocBuilder<SpaceBloc, SpaceState>(
+            builder: (context, state) {
+              if (state.spaces.isEmpty &&
+                  userProfile.authenticator == AuthenticatorPB.AppFlowyCloud) {
+                return const SizedBox.shrink();
+              }
 
-          return ListView.builder(
-            key: ValueKey(state.spaces.hashCode),
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            itemCount: actions.length,
-            physics: StyledScrollPhysics(),
-            itemBuilder: (_, index) => actions[index],
+              final actions = _buildActions(
+                context,
+                viewInfoState,
+              );
+              return ListView.builder(
+                key: ValueKey(state.spaces.hashCode),
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: actions.length,
+                physics: StyledScrollPhysics(),
+                itemBuilder: (_, index) => actions[index],
+              );
+            },
           );
         },
       ),
     );
   }
 
-  List<Widget> _buildActions(ViewInfoState state) {
+  List<Widget> _buildActions(BuildContext context, ViewInfoState state) {
+    final view = context.watch<ViewLockStatusBloc>().state.view;
     final appearanceSettings = context.watch<AppearanceSettingsCubit>().state;
     final dateFormat = appearanceSettings.dateFormat;
     final timeFormat = appearanceSettings.timeFormat;
 
     final viewMoreActionTypes = [
-      if (widget.isDocument) ViewMoreActionType.divider,
-      ViewMoreActionType.duplicate,
+      if (widget.view.layout != ViewLayoutPB.Chat) ViewMoreActionType.duplicate,
       ViewMoreActionType.moveTo,
       ViewMoreActionType.delete,
       ViewMoreActionType.divider,
     ];
 
     final actions = [
-      if (widget.isDocument) ...[
+      ...widget.customActions,
+      if (widget.view.isDocument) ...[
         const FontSizeAction(),
+        ViewAction(
+          type: ViewMoreActionType.divider,
+          view: view,
+          mutex: popoverMutex,
+        ),
+      ],
+      if (widget.view.isDocument || widget.view.isDatabase) ...[
+        LockPageAction(
+          view: view,
+        ),
+        ViewAction(
+          type: ViewMoreActionType.divider,
+          view: view,
+          mutex: popoverMutex,
+        ),
       ],
       ...viewMoreActionTypes.map(
         (type) => ViewAction(
           type: type,
-          view: widget.view,
+          view: view,
           mutex: popoverMutex,
         ),
       ),
@@ -129,6 +164,7 @@ class _MoreViewActionsState extends State<MoreViewActions> {
           dateFormat: dateFormat,
           timeFormat: timeFormat,
           documentCounters: state.documentCounters,
+          titleCounters: state.titleCounters,
           createdAt: state.createdAt,
         ),
         const VSpace(4.0),

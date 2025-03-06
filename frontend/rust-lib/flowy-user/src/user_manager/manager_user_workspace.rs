@@ -17,7 +17,6 @@ use flowy_user_pub::entities::{
   Role, UpdateUserProfileParams, UserWorkspace, WorkspaceInvitation, WorkspaceInvitationStatus,
   WorkspaceMember,
 };
-use lib_dispatch::prelude::af_spawn;
 
 use crate::entities::{
   RepeatedUserWorkspacePB, ResetWorkspacePB, SubscribeWorkspacePB, SuccessWorkspaceSubscriptionPB,
@@ -34,7 +33,8 @@ use crate::services::sqlite_sql::member_sql::{
 };
 use crate::services::sqlite_sql::user_sql::UserTableChangeset;
 use crate::services::sqlite_sql::workspace_sql::{
-  get_all_user_workspace_op, get_user_workspace_op, insert_new_workspaces_op, UserWorkspaceTable,
+  get_all_user_workspace_op, get_user_workspace_op, insert_or_update_workspaces_op,
+  UserWorkspaceTable,
 };
 use crate::user_manager::{upsert_user_profile_change, UserManager};
 use flowy_user_pub::session::Session;
@@ -215,7 +215,7 @@ impl UserManager {
     // save the workspace to sqlite db
     let uid = self.user_id()?;
     let mut conn = self.db_connection(uid)?;
-    insert_new_workspaces_op(uid, &[new_workspace.clone()], &mut conn)?;
+    insert_or_update_workspaces_op(uid, &[new_workspace.clone()], &mut conn)?;
     Ok(new_workspace)
   }
 
@@ -395,7 +395,7 @@ impl UserManager {
 
     if let Ok(service) = self.cloud_services.get_user_service() {
       if let Ok(pool) = self.db_pool(uid) {
-        af_spawn(async move {
+        tokio::spawn(async move {
           if let Ok(new_user_workspaces) = service.get_all_workspace(uid).await {
             if let Ok(conn) = pool.get() {
               let _ = save_all_user_workspaces(uid, conn, &new_user_workspaces);
@@ -559,12 +559,12 @@ impl UserManager {
       .send();
 
     if let Some(ai_model) = &ai_model {
-      if let Err(err) = self.cloud_services.set_ai_model(ai_model.to_str()) {
+      if let Err(err) = self.cloud_services.set_ai_model(ai_model) {
         error!("Set ai model failed: {}", err);
       }
 
       let conn = self.db_connection(uid)?;
-      let params = UpdateUserProfileParams::new(uid).with_ai_model(ai_model.to_str());
+      let params = UpdateUserProfileParams::new(uid).with_ai_model(ai_model);
       upsert_user_profile_change(uid, conn, UserTableChangeset::new(params))?;
     }
     Ok(())
@@ -679,6 +679,7 @@ pub fn save_user_workspace(
       user_workspace_table::created_at.eq(&user_workspace.created_at),
       user_workspace_table::database_storage_id.eq(&user_workspace.database_storage_id),
       user_workspace_table::icon.eq(&user_workspace.icon),
+      user_workspace_table::member_count.eq(&user_workspace.member_count),
     ))
     .execute(conn)?;
 
@@ -729,6 +730,8 @@ pub fn save_all_user_workspaces(
         user_workspace_table::created_at.eq(&user_workspace.created_at),
         user_workspace_table::database_storage_id.eq(&user_workspace.database_storage_id),
         user_workspace_table::icon.eq(&user_workspace.icon),
+        user_workspace_table::member_count.eq(&user_workspace.member_count),
+        user_workspace_table::role.eq(&user_workspace.role),
       ))
       .execute(conn)?;
 

@@ -4,6 +4,7 @@ import 'package:appflowy/mobile/presentation/bottom_sheet/bottom_sheet.dart';
 import 'package:appflowy/mobile/presentation/home/space/mobile_space_header.dart';
 import 'package:appflowy/mobile/presentation/home/space/mobile_space_menu.dart';
 import 'package:appflowy/mobile/presentation/page_item/mobile_view_item.dart';
+import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/shared/list_extension.dart';
 import 'package:appflowy/workspace/application/sidebar/folder/folder_bloc.dart';
 import 'package:appflowy/workspace/application/sidebar/space/space_bloc.dart';
@@ -17,7 +18,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class MobileSpace extends StatelessWidget {
-  const MobileSpace({super.key});
+  const MobileSpace({
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +66,8 @@ class MobileSpace extends StatelessWidget {
       useRootNavigator: true,
       title: LocaleKeys.space_title.tr(),
       backgroundColor: Theme.of(context).colorScheme.surface,
+      enableScrollable: true,
+      bottomSheetPadding: context.bottomSheetPadding(),
       builder: (_) {
         return BlocProvider.value(
           value: context.read<SpaceBloc>(),
@@ -93,9 +98,10 @@ class MobileSpace extends StatelessWidget {
             Navigator.of(sheetContext).pop();
             context.read<SpaceBloc>().add(
                   SpaceEvent.createPage(
-                    name: layout.defaultName,
+                    name: '',
                     layout: layout,
                     index: 0,
+                    openAfterCreate: true,
                   ),
                 );
             context.read<SpaceBloc>().add(
@@ -146,7 +152,14 @@ class _Pages extends StatelessWidget {
                     level: 0,
                     leftPadding: HomeSpaceViewSizes.leftPadding,
                     isFeedback: false,
-                    onSelected: context.pushView,
+                    onSelected: (v) => context.pushView(
+                      v,
+                      tabs: [
+                        PickerTabType.emoji,
+                        PickerTabType.icon,
+                        PickerTabType.custom,
+                      ].map((e) => e.name).toList(),
+                    ),
                     endActionPane: (context) {
                       final view = context.read<ViewBloc>().state.view;
                       final actions = [

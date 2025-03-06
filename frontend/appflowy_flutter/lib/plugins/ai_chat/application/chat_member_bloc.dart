@@ -12,14 +12,13 @@ class ChatMemberBloc extends Bloc<ChatMemberEvent, ChatMemberState> {
   ChatMemberBloc() : super(const ChatMemberState()) {
     on<ChatMemberEvent>(
       (event, emit) async {
-        event.when(
-          initial: () {},
+        await event.when(
           receiveMemberInfo: (String id, WorkspaceMemberPB memberInfo) {
             final members = Map<String, ChatMember>.from(state.members);
             members[id] = ChatMember(info: memberInfo);
             emit(state.copyWith(members: members));
           },
-          getMemberInfo: (String userId) {
+          getMemberInfo: (String userId) async {
             if (state.members.containsKey(userId)) {
               // Member info already exists. Debouncing refresh member info from backend would be better.
               return;
@@ -28,19 +27,15 @@ class ChatMemberBloc extends Bloc<ChatMemberEvent, ChatMemberState> {
             final payload = WorkspaceMemberIdPB(
               uid: Int64.parseInt(userId),
             );
-            UserEventGetMemberInfo(payload).send().then((result) {
-              if (!isClosed) {
-                result.fold((member) {
-                  add(
-                    ChatMemberEvent.receiveMemberInfo(
-                      userId,
-                      member,
-                    ),
-                  );
-                }, (err) {
-                  Log.error("Error getting member info: $err");
-                });
-              }
+            await UserEventGetMemberInfo(payload).send().then((result) {
+              result.fold(
+                (member) {
+                  if (!isClosed) {
+                    add(ChatMemberEvent.receiveMemberInfo(userId, member));
+                  }
+                },
+                (err) => Log.error("Error getting member info: $err"),
+              );
             });
           },
         );
@@ -51,7 +46,6 @@ class ChatMemberBloc extends Bloc<ChatMemberEvent, ChatMemberState> {
 
 @freezed
 class ChatMemberEvent with _$ChatMemberEvent {
-  const factory ChatMemberEvent.initial() = Initial;
   const factory ChatMemberEvent.getMemberInfo(
     String userId,
   ) = _GetMemberInfo;

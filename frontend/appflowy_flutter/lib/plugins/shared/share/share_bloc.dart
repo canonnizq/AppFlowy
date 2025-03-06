@@ -7,6 +7,7 @@ import 'package:appflowy/workspace/application/view/view_listener.dart';
 import 'package:appflowy/workspace/application/view/view_service.dart';
 import 'package:appflowy_backend/dispatch/dispatch.dart';
 import 'package:appflowy_backend/log.dart';
+import 'package:appflowy_backend/protobuf/flowy-error/code.pbenum.dart';
 import 'package:appflowy_backend/protobuf/flowy-error/errors.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
@@ -51,7 +52,15 @@ class ShareBloc extends Bloc<ShareEvent, ShareState> {
         unPublish: () async => _unpublish(emit),
         updatePublishStatus: () async => _updatePublishStatus(emit),
         updateViewName: (viewName, viewId) async {
-          emit(state.copyWith(viewName: viewName, viewId: viewId));
+          emit(
+            state.copyWith(
+              viewName: viewName,
+              viewId: viewId,
+              updatePathNameResult: null,
+              publishResult: null,
+              unpublishResult: null,
+            ),
+          );
         },
         setPublishStatus: (isPublished) {
           emit(
@@ -65,6 +74,13 @@ class ShareBloc extends Bloc<ShareEvent, ShareState> {
           pathName,
           emit,
         ),
+        clearPathNameResult: () async {
+          emit(
+            state.copyWith(
+              updatePathNameResult: null,
+            ),
+          );
+        },
       );
     });
   }
@@ -180,39 +196,62 @@ class ShareBloc extends Bloc<ShareEvent, ShareState> {
       (v) => v.authenticator == AuthenticatorPB.AppFlowyCloud,
       (p) => false,
     );
+
+    // skip the "Record not found" error, it's because the view is not published yet
+    publishInfo.fold(
+      (s) {
+        Log.info(
+          'get publish info success: $publishInfo for view: ${view.name}(${view.id})',
+        );
+      },
+      (f) {
+        if (![
+          ErrorCode.RecordNotFound,
+          ErrorCode.LocalVersionNotSupport,
+        ].contains(f.code)) {
+          Log.info(
+            'get publish info failed: $f for view: ${view.name}(${view.id})',
+          );
+        }
+      },
+    );
+
     String workspaceId = state.workspaceId;
     if (workspaceId.isEmpty) {
-      workspaceId = await UserBackendService.getCurrentWorkspace()
-          .fold((s) => s.id, (f) => '');
+      workspaceId = await UserBackendService.getCurrentWorkspace().fold(
+        (s) => s.id,
+        (f) => '',
+      );
     }
-    publishInfo.fold((s) {
-      emit(
-        state.copyWith(
-          isPublished: true,
-          namespace: s.namespace,
-          pathName: s.publishName,
-          url: ShareConstants.buildPublishUrl(
+
+    final (isPublished, namespace, pathName, url) = publishInfo.fold(
+      (s) {
+        return (
+          // if the unpublishedAtTimestampSec is not set, it means the view is not unpublished.
+          !s.hasUnpublishedAtTimestampSec(),
+          s.namespace,
+          s.publishName,
+          ShareConstants.buildPublishUrl(
             nameSpace: s.namespace,
             publishName: s.publishName,
           ),
-          viewName: view.name,
-          enablePublish: enablePublish,
-          workspaceId: workspaceId,
-          viewId: view.id,
-        ),
-      );
-    }, (f) {
-      emit(
-        state.copyWith(
-          isPublished: false,
-          url: '',
-          viewName: view.name,
-          enablePublish: enablePublish,
-          workspaceId: workspaceId,
-          viewId: view.id,
-        ),
-      );
-    });
+        );
+      },
+      (f) => (false, '', '', ''),
+    );
+
+    emit(
+      state.copyWith(
+        isPublished: isPublished,
+        namespace: namespace,
+        pathName: pathName,
+        url: url,
+        viewName: view.name,
+        enablePublish: enablePublish,
+        workspaceId: workspaceId,
+        viewId: view.id,
+      ),
+    );
   }
 
   Future<void> _updatePathName(
@@ -224,6 +263,21 @@ class ShareBloc extends Bloc<ShareEvent, ShareState> {
         updatePathNameResult: null,
       ),
     );
+
+    if (pathName.isEmpty) {
+      emit(
+        state.copyWith(
+          updatePathNameResult: FlowyResult.failure(
+            FlowyError(
+              code: ErrorCode.ViewNameInvalid,
+              msg: 'Path name is invalid',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     final request = SetPublishNamePB()
       ..viewId = view.id
       ..newName = pathName;
@@ -270,18 +324,20 @@ class ShareBloc extends Bloc<ShareEvent, ShareState> {
         (f) => FlowyResult.failure(f),
       );
     } else {
-      result = await documentExporter.export(type.documentExportType);
+      result =
+          await documentExporter.export(type.documentExportType, path: path);
     }
     return result.fold(
       (s) {
         if (path != null) {
           switch (type) {
-            case ShareType.markdown:
             case ShareType.html:
             case ShareType.csv:
             case ShareType.json:
             case ShareType.rawDatabaseData:
               File(path).writeAsStringSync(s);
+              return FlowyResult.success(type);
+            case ShareType.markdown:
               return FlowyResult.success(type);
             default:
               break;
@@ -333,22 +389,31 @@ enum ShareType {
 @freezed
 class ShareEvent with _$ShareEvent {
   const factory ShareEvent.initial() = _Initial;
+
   const factory ShareEvent.share(
     ShareType type,
     String? path,
   ) = _Share;
+
   const factory ShareEvent.publish(
     String nameSpace,
     String pageId,
     List<String> selectedViewIds,
   ) = _Publish;
+
   const factory ShareEvent.unPublish() = _UnPublish;
+
   const factory ShareEvent.updateViewName(String name, String viewId) =
       _UpdateViewName;
+
   const factory ShareEvent.updatePublishStatus() = _UpdatePublishStatus;
+
   const factory ShareEvent.setPublishStatus(bool isPublished) =
       _SetPublishStatus;
+
   const factory ShareEvent.updatePathName(String pathName) = _UpdatePathName;
+
+  const factory ShareEvent.clearPathNameResult() = _ClearPathNameResult;
 }
 
 @freezed

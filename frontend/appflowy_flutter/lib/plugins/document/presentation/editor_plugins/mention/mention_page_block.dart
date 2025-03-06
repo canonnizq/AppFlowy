@@ -2,12 +2,16 @@ import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/mobile/application/mobile_router.dart';
 import 'package:appflowy/plugins/document/application/document_bloc.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/mention_block.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/mention_page_bloc.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/mobile_page_selector_sheet.dart';
 import 'package:appflowy/plugins/trash/application/trash_service.dart';
 import 'package:appflowy/shared/clipboard_state.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
+import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/startup/startup.dart';
+import 'package:appflowy/util/string_extension.dart';
 import 'package:appflowy/workspace/application/action_navigation/action_navigation_bloc.dart';
 import 'package:appflowy/workspace/application/action_navigation/navigation_action.dart';
 import 'package:appflowy/workspace/application/view/prelude.dart';
@@ -56,6 +60,12 @@ Node pageMentionNode(String viewId) {
       ],
     ),
   );
+}
+
+class ReferenceState {
+  ReferenceState(this.isReference);
+
+  final bool isReference;
 }
 
 class MentionPageBlock extends StatefulWidget {
@@ -336,6 +346,11 @@ Future<void> _handleTap(
       await context.pushView(
         view,
         blockId: blockId,
+        tabs: [
+          PickerTabType.emoji,
+          PickerTabType.icon,
+          PickerTabType.custom,
+        ].map((e) => e.name).toList(),
       );
     }
   } else {
@@ -419,7 +434,6 @@ class _MentionPageBlockContent extends StatelessWidget {
           child: FlowyText(
             text,
             decoration: TextDecoration.underline,
-            decorationThickness: 0.5,
             fontSize: textStyle?.fontSize,
             fontWeight: textStyle?.fontWeight,
             lineHeight: textStyle?.height,
@@ -474,18 +488,11 @@ class _MentionPageBlockContent extends StatelessWidget {
         Stack(
           children: [
             view.icon.value.isNotEmpty
-                ? FlowyText.emoji(
-                    view.icon.value,
-                    fontSize: emojiSize,
-                    lineHeight: textStyle?.height,
-                    optimizeEmojiAlign: true,
-                    color: AFThemeExtension.of(context).strongText,
+                ? EmojiIconWidget(
+                    emoji: view.icon.toEmojiIconData(),
+                    emojiSize: emojiSize,
                   )
-                : FlowySvg(
-                    view.layout.icon,
-                    size: Size.square(iconSize + 2.0),
-                    color: AFThemeExtension.of(context).strongText,
-                  ),
+                : view.defaultIcon(size: Size.square(iconSize + 2.0)),
             if (!isChildPage) ...[
               const Positioned(
                 right: 0,
@@ -516,7 +523,10 @@ class _MentionPageBlockContent extends StatelessWidget {
     );
 
     if (blockContent == null || blockContent.isEmpty) {
-      return shouldDisplayViewName ? view.name : '';
+      return shouldDisplayViewName
+          ? view.name
+              .orDefault(LocaleKeys.menuAppHeader_defaultNewPageName.tr())
+          : '';
     }
 
     return shouldDisplayViewName

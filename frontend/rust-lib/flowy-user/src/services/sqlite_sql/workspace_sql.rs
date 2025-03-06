@@ -16,6 +16,8 @@ pub struct UserWorkspaceTable {
   pub created_at: i64,
   pub database_storage_id: String,
   pub icon: String,
+  pub member_count: i64,
+  pub role: Option<i32>,
 }
 
 pub fn get_user_workspace_op(workspace_id: &str, mut conn: DBConnection) -> Option<UserWorkspace> {
@@ -46,7 +48,7 @@ pub fn save_user_workspaces_op(
 ) -> Result<(), FlowyError> {
   conn.immediate_transaction(|conn| {
     delete_existing_workspaces(uid, conn)?;
-    insert_new_workspaces_op(uid, user_workspaces, conn)?;
+    insert_or_update_workspaces_op(uid, user_workspaces, conn)?;
     Ok(())
   })
 }
@@ -60,17 +62,30 @@ fn delete_existing_workspaces(uid: i64, conn: &mut SqliteConnection) -> Result<(
   Ok(())
 }
 
-pub fn insert_new_workspaces_op(
+pub fn insert_or_update_workspaces_op(
   uid: i64,
   user_workspaces: &[UserWorkspace],
   conn: &mut SqliteConnection,
 ) -> Result<(), FlowyError> {
   for user_workspace in user_workspaces {
     let new_record = UserWorkspaceTable::try_from((uid, user_workspace))?;
+
     diesel::insert_into(user_workspace_table::table)
-      .values(new_record)
+      .values(new_record.clone())
+      .on_conflict(user_workspace_table::id)
+      .do_update()
+      .set((
+        user_workspace_table::name.eq(new_record.name),
+        user_workspace_table::uid.eq(new_record.uid),
+        user_workspace_table::created_at.eq(new_record.created_at),
+        user_workspace_table::database_storage_id.eq(new_record.database_storage_id),
+        user_workspace_table::icon.eq(new_record.icon),
+        user_workspace_table::member_count.eq(new_record.member_count),
+        user_workspace_table::role.eq(new_record.role),
+      ))
       .execute(conn)?;
   }
+
   Ok(())
 }
 
@@ -92,6 +107,8 @@ impl TryFrom<(i64, &UserWorkspace)> for UserWorkspaceTable {
       created_at: value.1.created_at.timestamp(),
       database_storage_id: value.1.workspace_database_id.clone(),
       icon: value.1.icon.clone(),
+      member_count: value.1.member_count,
+      role: value.1.role.clone().map(|v| v as i32),
     })
   }
 }
@@ -107,6 +124,8 @@ impl From<UserWorkspaceTable> for UserWorkspace {
         .unwrap_or_default(),
       workspace_database_id: value.database_storage_id,
       icon: value.icon,
+      member_count: value.member_count,
+      role: value.role.map(|v| v.into()),
     }
   }
 }

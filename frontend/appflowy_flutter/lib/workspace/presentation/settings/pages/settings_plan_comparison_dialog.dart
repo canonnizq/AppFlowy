@@ -1,4 +1,5 @@
 import 'package:appflowy/generated/flowy_svgs.g.dart';
+import 'package:appflowy/shared/loading.dart';
 import 'package:appflowy/util/theme_extension.dart';
 import 'package:appflowy/workspace/application/settings/plan/settings_plan_bloc.dart';
 import 'package:appflowy/workspace/application/settings/plan/workspace_subscription_ext.dart';
@@ -13,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../generated/locale_keys.g.dart';
-import '../../../../plugins/document/presentation/editor_plugins/openai/widgets/loading.dart';
 
 class SettingsPlanComparisonDialog extends StatefulWidget {
   const SettingsPlanComparisonDialog({
@@ -668,7 +668,18 @@ final _planLabels = [
     tooltip: LocaleKeys.settings_comparePlanDialog_planLabels_tooltipSix.tr(),
   ),
   _PlanItem(
+    label: LocaleKeys.settings_comparePlanDialog_planLabels_itemSeven.tr(),
+    tooltip: LocaleKeys.settings_comparePlanDialog_planLabels_tooltipSix.tr(),
+  ),
+  _PlanItem(
     label: LocaleKeys.settings_comparePlanDialog_planLabels_itemFileUpload.tr(),
+  ),
+  _PlanItem(
+    label:
+        LocaleKeys.settings_comparePlanDialog_planLabels_customNamespace.tr(),
+    tooltip: LocaleKeys
+        .settings_comparePlanDialog_planLabels_customNamespaceTooltip
+        .tr(),
   ),
 ];
 
@@ -706,7 +717,13 @@ final List<_CellItem> _freeLabels = [
     label: LocaleKeys.settings_comparePlanDialog_freeLabels_itemSix.tr(),
   ),
   _CellItem(
+    label: LocaleKeys.settings_comparePlanDialog_freeLabels_itemSeven.tr(),
+  ),
+  _CellItem(
     label: LocaleKeys.settings_comparePlanDialog_freeLabels_itemFileUpload.tr(),
+  ),
+  const _CellItem(
+    label: '',
   ),
 ];
 
@@ -737,6 +754,13 @@ final List<_CellItem> _proLabels = [
     label: LocaleKeys.settings_comparePlanDialog_proLabels_itemSix.tr(),
   ),
   _CellItem(
+    label: LocaleKeys.settings_comparePlanDialog_proLabels_itemSeven.tr(),
+  ),
+  _CellItem(
     label: LocaleKeys.settings_comparePlanDialog_proLabels_itemFileUpload.tr(),
+  ),
+  const _CellItem(
+    label: '',
+    icon: FlowySvgs.check_m,
   ),
 ];

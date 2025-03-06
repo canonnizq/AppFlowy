@@ -1,20 +1,23 @@
 use crate::af_cloud::AFServer;
-use client_api::entity::ai_dto::{CompleteTextParams, CompletionType, RepeatedRelatedQuestion};
-use client_api::entity::{
+use client_api::entity::ai_dto::{
+  ChatQuestionQuery, CompleteTextParams, RepeatedRelatedQuestion, ResponseFormat,
+};
+use client_api::entity::chat_dto::{
   CreateAnswerMessageParams, CreateChatMessageParams, CreateChatParams, MessageCursor,
   RepeatedChatMessage,
 };
 use flowy_ai_pub::cloud::{
-  ChatCloudService, ChatMessage, ChatMessageMetadata, ChatMessageType, LocalAIConfig, StreamAnswer,
-  StreamComplete, SubscriptionPlan,
+  ChatCloudService, ChatMessage, ChatMessageMetadata, ChatMessageType, ChatSettings, LocalAIConfig,
+  ModelList, StreamAnswer, StreamComplete, SubscriptionPlan, UpdateChatParams,
 };
 use flowy_error::FlowyError;
 use futures_util::{StreamExt, TryStreamExt};
 use lib_infra::async_trait::async_trait;
 use lib_infra::util::{get_operating_system, OperatingSystem};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::trace;
 
 pub(crate) struct AFCloudChatCloudServiceImpl<T> {
   pub inner: T,
@@ -30,13 +33,14 @@ where
     _uid: &i64,
     workspace_id: &str,
     chat_id: &str,
+    rag_ids: Vec<String>,
   ) -> Result<(), FlowyError> {
     let chat_id = chat_id.to_string();
     let try_get_client = self.inner.try_get_client();
     let params = CreateChatParams {
       chat_id,
       name: "".to_string(),
-      rag_ids: vec![],
+      rag_ids,
     };
     try_get_client?
       .create_chat(workspace_id, params)
@@ -60,7 +64,7 @@ where
     let params = CreateChatMessageParams {
       content: message.to_string(),
       message_type,
-      metadata: Some(json!(metadata)),
+      metadata: metadata.to_vec(),
     };
 
     let message = try_get_client?
@@ -96,13 +100,27 @@ where
     workspace_id: &str,
     chat_id: &str,
     message_id: i64,
+    format: ResponseFormat,
   ) -> Result<StreamAnswer, FlowyError> {
+    trace!(
+      "stream_answer: workspace_id={}, chat_id={}, format={:?}",
+      workspace_id,
+      chat_id,
+      format
+    );
     let try_get_client = self.inner.try_get_client();
-    let stream = try_get_client?
-      .stream_answer_v2(workspace_id, chat_id, message_id)
-      .await
-      .map_err(FlowyError::from)?
-      .map_err(FlowyError::from);
+    let result = try_get_client?
+      .stream_answer_v3(
+        workspace_id,
+        ChatQuestionQuery {
+          chat_id: chat_id.to_string(),
+          question_id: message_id,
+          format,
+        },
+      )
+      .await;
+
+    let stream = result.map_err(FlowyError::from)?.map_err(FlowyError::from);
     Ok(stream.boxed())
   }
 
@@ -136,6 +154,22 @@ where
     Ok(resp)
   }
 
+  async fn get_question_from_answer_id(
+    &self,
+    workspace_id: &str,
+    chat_id: &str,
+    answer_message_id: i64,
+  ) -> Result<ChatMessage, FlowyError> {
+    let try_get_client = self.inner.try_get_client()?;
+    let resp = try_get_client
+      .get_question_message_from_answer_id(workspace_id, chat_id, answer_message_id)
+      .await
+      .map_err(FlowyError::from)?
+      .ok_or_else(FlowyError::record_not_found)?;
+
+    Ok(resp)
+  }
+
   async fn get_related_message(
     &self,
     workspace_id: &str,
@@ -154,15 +188,8 @@ where
   async fn stream_complete(
     &self,
     workspace_id: &str,
-    text: &str,
-    completion_type: CompletionType,
+    params: CompleteTextParams,
   ) -> Result<StreamComplete, FlowyError> {
-    // TODO(Nathan): Check if this is correct after updating to latest client-api
-    let params = CompleteTextParams {
-      text: text.to_string(),
-      completion_type: Some(completion_type),
-      custom_prompt: None,
-    };
     let stream = self
       .inner
       .try_get_client()?
@@ -215,5 +242,41 @@ where
       .get_active_workspace_subscriptions(workspace_id)
       .await?;
     Ok(plans)
+  }
+
+  async fn get_chat_settings(
+    &self,
+    workspace_id: &str,
+    chat_id: &str,
+  ) -> Result<ChatSettings, FlowyError> {
+    let settings = self
+      .inner
+      .try_get_client()?
+      .get_chat_settings(workspace_id, chat_id)
+      .await?;
+    Ok(settings)
+  }
+
+  async fn update_chat_settings(
+    &self,
+    workspace_id: &str,
+    chat_id: &str,
+    params: UpdateChatParams,
+  ) -> Result<(), FlowyError> {
+    self
+      .inner
+      .try_get_client()?
+      .update_chat_settings(workspace_id, chat_id, params)
+      .await?;
+    Ok(())
+  }
+
+  async fn get_available_models(&self, workspace_id: &str) -> Result<ModelList, FlowyError> {
+    let list = self
+      .inner
+      .try_get_client()?
+      .get_model_list(workspace_id)
+      .await?;
+    Ok(list)
   }
 }

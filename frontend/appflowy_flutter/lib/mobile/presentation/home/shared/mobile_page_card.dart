@@ -7,9 +7,11 @@ import 'package:appflowy/mobile/application/page_style/document_page_style_bloc.
 import 'package:appflowy/mobile/application/recent/recent_view_bloc.dart';
 import 'package:appflowy/mobile/presentation/base/animated_gesture.dart';
 import 'package:appflowy/mobile/presentation/bottom_sheet/bottom_sheet.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/header/emoji_icon_widget.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/plugins.dart';
 import 'package:appflowy/shared/appflowy_network_image.dart';
 import 'package:appflowy/shared/flowy_gradient_colors.dart';
+import 'package:appflowy/shared/icon_emoji_picker/tab.dart';
 import 'package:appflowy/util/string_extension.dart';
 import 'package:appflowy/util/theme_extension.dart';
 import 'package:appflowy/workspace/application/settings/appearance/appearance_cubit.dart';
@@ -26,7 +28,6 @@ import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:string_validator/string_validator.dart';
 import 'package:time/time.dart';
@@ -81,7 +82,14 @@ class MobileViewPage extends StatelessWidget {
               spaceRatio: 4,
             ),
             child: AnimatedGestureDetector(
-              onTapUp: () => context.pushView(view),
+              onTapUp: () => context.pushView(
+                view,
+                tabs: [
+                  PickerTabType.emoji,
+                  PickerTabType.icon,
+                  PickerTabType.custom,
+                ].map((e) => e.name).toList(),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -118,7 +126,7 @@ class MobileViewPage extends StatelessWidget {
   }
 
   Widget _buildNameAndLastViewed(BuildContext context, RecentViewState state) {
-    final supportAvatar = isURL(state.icon);
+    final supportAvatar = isURL(state.icon.emoji);
     if (!supportAvatar) {
       return _buildLastViewed(context);
     }
@@ -140,7 +148,8 @@ class MobileViewPage extends StatelessWidget {
     final iconUrl = userProfile?.iconUrl;
     if (iconUrl == null ||
         iconUrl.isEmpty ||
-        view.createdBy != userProfile?.id) {
+        view.createdBy != userProfile?.id ||
+        !isURL(iconUrl)) {
       return const SizedBox.shrink();
     }
 
@@ -173,23 +182,23 @@ class MobileViewPage extends StatelessWidget {
   Widget _buildTitle(BuildContext context, RecentViewState state) {
     final name = state.name;
     final icon = state.icon;
-    final fontFamily = Platform.isAndroid || Platform.isLinux
-        ? GoogleFonts.notoColorEmoji().fontFamily
-        : null;
     return RichText(
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
         children: [
-          TextSpan(
-            text: icon,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                  fontSize: 17.0,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: fontFamily,
+          if (icon.isNotEmpty) ...[
+            WidgetSpan(
+              child: SizedBox(
+                width: 20,
+                child: RawEmojiIconWidget(
+                  emoji: icon,
+                  emojiSize: 18.0,
                 ),
-          ),
-          if (icon.isNotEmpty) const WidgetSpan(child: HSpace(2.0)),
+              ),
+            ),
+            const WidgetSpan(child: HSpace(8.0)),
+          ],
           TextSpan(
             text: name,
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
@@ -206,7 +215,7 @@ class MobileViewPage extends StatelessWidget {
   Widget _buildAuthor(BuildContext context, RecentViewState state) {
     return FlowyText.regular(
       // view.createdBy.toString(),
-      'Lucas',
+      '',
       fontSize: 12.0,
       color: Theme.of(context).hintColor,
       overflow: TextOverflow.ellipsis,
@@ -216,7 +225,7 @@ class MobileViewPage extends StatelessWidget {
   Widget _buildLastViewed(BuildContext context) {
     final textColor = Theme.of(context).isLightMode
         ? const Color(0x7F171717)
-        : Colors.white.withOpacity(0.45);
+        : Colors.white.withValues(alpha: 0.45);
     if (timestamp == null) {
       return const SizedBox.shrink();
     }

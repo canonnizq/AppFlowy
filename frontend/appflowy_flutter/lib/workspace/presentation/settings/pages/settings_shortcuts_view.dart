@@ -5,9 +5,11 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/base/strin
 import 'package:appflowy/plugins/document/presentation/editor_plugins/copy_and_paste/custom_copy_command.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/copy_and_paste/custom_cut_command.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/copy_and_paste/custom_paste_command.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/math_equation/math_equation_shortcut.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/toggle/toggle_block_shortcuts.dart';
 import 'package:appflowy/workspace/application/settings/shortcuts/settings_shortcuts_cubit.dart';
 import 'package:appflowy/workspace/application/settings/shortcuts/settings_shortcuts_service.dart';
+import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/shared_widget.dart';
 import 'package:appflowy/workspace/presentation/settings/shared/settings_alert_dialog.dart';
 import 'package:appflowy/workspace/presentation/settings/shared/settings_body.dart';
 import 'package:appflowy/workspace/presentation/settings/widgets/emoji_picker/emoji_shortcut_event.dart';
@@ -55,21 +57,24 @@ class _SettingsShortcutsViewState extends State<SettingsShortcutsView> {
                 ),
                 const HSpace(10),
                 _ResetButton(
-                  onReset: () => SettingsAlertDialog(
-                    isDangerous: true,
-                    title: LocaleKeys.settings_shortcutsPage_resetDialog_title
-                        .tr(),
-                    subtitle: LocaleKeys
-                        .settings_shortcutsPage_resetDialog_description
-                        .tr(),
-                    confirmLabel: LocaleKeys
-                        .settings_shortcutsPage_resetDialog_buttonLabel
-                        .tr(),
-                    confirm: () {
-                      Navigator.of(context).pop();
-                      context.read<ShortcutsCubit>().resetToDefault();
-                    },
-                  ).show(context),
+                  onReset: () {
+                    showConfirmDialog(
+                      context: context,
+                      title: LocaleKeys.settings_shortcutsPage_resetDialog_title
+                          .tr(),
+                      description: LocaleKeys
+                          .settings_shortcutsPage_resetDialog_description
+                          .tr(),
+                      confirmLabel: LocaleKeys
+                          .settings_shortcutsPage_resetDialog_buttonLabel
+                          .tr(),
+                      onConfirm: () {
+                        context.read<ShortcutsCubit>().resetToDefault();
+                        Navigator.of(context).pop();
+                      },
+                      style: ConfirmPopupStyle.cancelAndOk,
+                    );
+                  },
                 ),
               ],
             ),
@@ -481,7 +486,7 @@ class KeyBadge extends StatelessWidget {
         borderRadius: Corners.s4Border,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 1,
             offset: const Offset(0, 1),
           ),
@@ -593,6 +598,10 @@ extension CommandLabel on CommandShortcutEvent {
       label = LocaleKeys.settings_shortcutsPage_keybindings_alignCenter.tr();
     } else if (key == customTextRightAlignCommand.key) {
       label = LocaleKeys.settings_shortcutsPage_keybindings_alignRight.tr();
+    } else if (key == insertInlineMathEquationCommand.key) {
+      label = LocaleKeys
+          .settings_shortcutsPage_keybindings_insertInlineMathEquation
+          .tr();
     } else if (key == undoCommand.key) {
       label = LocaleKeys.settings_shortcutsPage_keybindings_undo.tr();
     } else if (key == redoCommand.key) {

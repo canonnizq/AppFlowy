@@ -1,9 +1,9 @@
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
-import 'package:appflowy/plugins/document/presentation/editor_plugins/openai/widgets/loading.dart';
+import 'package:appflowy/shared/loading.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/user/application/user_service.dart';
-import 'package:appflowy/util/navigator_context_exntesion.dart';
+import 'package:appflowy/util/navigator_context_extension.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/shared_widget.dart';
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy_backend/log.dart';
@@ -60,7 +60,7 @@ class _AccountDeletionButtonState extends State<AccountDeletionButton> {
         const VSpace(8),
         Row(
           children: [
-            Flexible(
+            Expanded(
               child: FlowyText.regular(
                 LocaleKeys.newSettings_myAccount_deleteAccount_description.tr(),
                 fontSize: 12.0,
@@ -69,14 +69,14 @@ class _AccountDeletionButtonState extends State<AccountDeletionButton> {
                 color: textColor,
               ),
             ),
-            const HSpace(32),
             FlowyTextButton(
               LocaleKeys.button_deleteAccount.tr(),
               constraints: const BoxConstraints(minHeight: 32),
               padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
               fillColor: Colors.transparent,
               radius: Corners.s8Border,
-              hoverColor: Theme.of(context).colorScheme.error.withOpacity(0.1),
+              hoverColor:
+                  Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
               fontColor: Theme.of(context).colorScheme.error,
               fontSize: 12,
               isDangerous: true,

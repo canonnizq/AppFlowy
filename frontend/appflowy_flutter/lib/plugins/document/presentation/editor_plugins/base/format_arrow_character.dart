@@ -2,8 +2,13 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:appflowy_editor_plugins/appflowy_editor_plugins.dart';
 
 const _greater = '>';
+const _dash = '-';
 const _equals = '=';
-const _arrow = '⇒';
+const _equalGreater = '⇒';
+const _dashGreater = '→';
+
+const _hyphen = '-';
+const _emDash = '—'; // This is an em dash — not a single dash - !!
 
 /// format '=' + '>' into an ⇒
 ///
@@ -18,8 +23,44 @@ final CharacterShortcutEvent customFormatGreaterEqual = CharacterShortcutEvent(
   handler: (editorState) async => _handleDoubleCharacterReplacement(
     editorState: editorState,
     character: _greater,
-    replacement: _arrow,
+    replacement: _equalGreater,
     prefixCharacter: _equals,
+  ),
+);
+
+/// format '-' + '>' into ⇒
+///
+/// - support
+///   - desktop
+///   - mobile
+///   - web
+///
+final CharacterShortcutEvent customFormatDashGreater = CharacterShortcutEvent(
+  key: 'format - + > into ->',
+  character: _greater,
+  handler: (editorState) async => _handleDoubleCharacterReplacement(
+    editorState: editorState,
+    character: _greater,
+    replacement: _dashGreater,
+    prefixCharacter: _dash,
+  ),
+);
+
+/// format two hyphens into an em dash
+///
+/// - support
+///   - desktop
+///   - mobile
+///   - web
+///
+final CharacterShortcutEvent customFormatDoubleHyphenEmDash =
+    CharacterShortcutEvent(
+  key: 'format double hyphen into an em dash',
+  character: _hyphen,
+  handler: (editorState) async => _handleDoubleCharacterReplacement(
+    editorState: editorState,
+    character: _hyphen,
+    replacement: _emDash,
   ),
 );
 
@@ -61,11 +102,29 @@ Future<bool> _handleDoubleCharacterReplacement({
       return false;
     }
 
+    // insert the greater character first and convert it to the replacement character to support undo
+    final insert = editorState.transaction
+      ..insertText(
+        node,
+        selection.end.offset,
+        character,
+      );
+
+    await editorState.apply(
+      insert,
+      skipHistoryDebounce: true,
+    );
+
+    final afterSelection = editorState.selection;
+    if (afterSelection == null) {
+      return false;
+    }
+
     final replace = editorState.transaction
       ..replaceText(
         node,
-        selection.end.offset - 1,
-        1,
+        afterSelection.end.offset - 2,
+        2,
         replacement,
       );
 

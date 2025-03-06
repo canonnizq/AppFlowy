@@ -1,5 +1,6 @@
 import 'package:appflowy/env/cloud_env.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/plugins/shared/share/constants.dart';
 import 'package:appflowy/shared/appflowy_cache_manager.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/util/share_log_files.dart';
@@ -22,6 +23,7 @@ import 'package:appflowy/workspace/presentation/settings/widgets/feature_flags/f
 import 'package:appflowy/workspace/presentation/settings/widgets/members/workspace_member_page.dart';
 import 'package:appflowy/workspace/presentation/settings/widgets/settings_menu.dart';
 import 'package:appflowy/workspace/presentation/settings/widgets/settings_notifications_view.dart';
+import 'package:appflowy/workspace/presentation/settings/widgets/web_url_hint_widget.dart';
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
@@ -35,6 +37,9 @@ import 'widgets/setting_cloud.dart';
 @visibleForTesting
 const kSelfHostedTextInputFieldKey =
     ValueKey('self_hosted_url_input_text_field');
+@visibleForTesting
+const kSelfHostedWebTextInputFieldKey =
+    ValueKey('self_hosted_web_url_input_text_field');
 
 class SettingsDialog extends StatelessWidget {
   SettingsDialog(
@@ -57,7 +62,7 @@ class SettingsDialog extends StatelessWidget {
     return BlocProvider<SettingsDialogBloc>(
       create: (context) => SettingsDialogBloc(
         user,
-        context.read<UserWorkspaceBloc>().state.currentWorkspaceMember,
+        context.read<UserWorkspaceBloc>().state.currentWorkspace?.role,
         initPage: initPage,
       )..add(const SettingsDialogEvent.initial()),
       child: BlocBuilder<SettingsDialogBloc, SettingsDialogState>(
@@ -80,10 +85,6 @@ class SettingsDialog extends StatelessWidget {
                       currentPage:
                           context.read<SettingsDialogBloc>().state.page,
                       isBillingEnabled: state.isBillingEnabled,
-                      member: context
-                          .read<UserWorkspaceBloc>()
-                          .state
-                          .currentWorkspaceMember,
                     ),
                   ),
                   Expanded(
@@ -98,7 +99,8 @@ class SettingsDialog extends StatelessWidget {
                       context
                           .read<UserWorkspaceBloc>()
                           .state
-                          .currentWorkspaceMember,
+                          .currentWorkspace
+                          ?.role,
                     ),
                   ),
                 ],
@@ -114,7 +116,7 @@ class SettingsDialog extends StatelessWidget {
     String workspaceId,
     SettingsPage page,
     UserProfilePB user,
-    WorkspaceMemberPB? member,
+    AFRolePB? currentWorkspaceMemberRole,
   ) {
     switch (page) {
       case SettingsPage.account:
@@ -126,7 +128,7 @@ class SettingsDialog extends StatelessWidget {
       case SettingsPage.workspace:
         return SettingsWorkspaceView(
           userProfile: user,
-          workspaceMember: member,
+          currentWorkspaceMemberRole: currentWorkspaceMemberRole,
         );
       case SettingsPage.manageData:
         return SettingsManageDataView(userProfile: user);
@@ -139,8 +141,9 @@ class SettingsDialog extends StatelessWidget {
       case SettingsPage.ai:
         if (user.authenticator == AuthenticatorPB.AppFlowyCloud) {
           return SettingsAIView(
+            key: ValueKey(user.hashCode),
             userProfile: user,
-            member: member,
+            currentWorkspaceMemberRole: currentWorkspaceMemberRole,
             workspaceId: workspaceId,
           );
         } else {
@@ -168,8 +171,6 @@ class SettingsDialog extends StatelessWidget {
         );
       case SettingsPage.featureFlags:
         return const FeatureFlagsPage();
-      default:
-        return const SizedBox.shrink();
     }
   }
 }
@@ -248,26 +249,22 @@ class _SelfHostSettings extends StatefulWidget {
 }
 
 class _SelfHostSettingsState extends State<_SelfHostSettings> {
-  final textController = TextEditingController();
+  final cloudUrlTextController = TextEditingController();
+  final webUrlTextController = TextEditingController();
+
   AuthenticatorType type = AuthenticatorType.appflowyCloud;
 
   @override
   void initState() {
     super.initState();
 
-    getAppFlowyCloudUrl().then((url) {
-      textController.text = url;
-      if (kAppflowyCloudUrl != url) {
-        setState(() {
-          type = AuthenticatorType.appflowyCloudSelfHost;
-        });
-      }
-    });
+    _fetchUrls();
   }
 
   @override
   void dispose() {
-    textController.dispose();
+    cloudUrlTextController.dispose();
+    webUrlTextController.dispose();
     super.dispose();
   }
 
@@ -288,40 +285,52 @@ class _SelfHostSettingsState extends State<_SelfHostSettings> {
   }
 
   Widget _buildInputField() {
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: SizedBox(
-            height: 36,
-            child: FlowyTextField(
-              key: kSelfHostedTextInputFieldKey,
-              controller: textController,
-              autoFocus: false,
-              textStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-              ),
-              hintText: kAppflowyCloudUrl,
-              onEditingComplete: () => _saveUrl(
-                url: textController.text,
-                type: AuthenticatorType.appflowyCloudSelfHost,
-              ),
-            ),
+        _SelfHostUrlField(
+          textFieldKey: kSelfHostedTextInputFieldKey,
+          textController: cloudUrlTextController,
+          title: LocaleKeys.settings_menu_cloudURL.tr(),
+          hintText: LocaleKeys.settings_menu_cloudURLHint.tr(),
+          onSave: (url) => _saveUrl(
+            cloudUrl: url,
+            webUrl: webUrlTextController.text,
+            type: AuthenticatorType.appflowyCloudSelfHost,
           ),
         ),
-        const HSpace(12.0),
-        Container(
-          height: 36,
-          constraints: const BoxConstraints(minWidth: 78),
-          child: OutlinedRoundedButton(
-            text: LocaleKeys.button_save.tr(),
-            onTap: () => _saveUrl(
-              url: textController.text,
-              type: AuthenticatorType.appflowyCloudSelfHost,
-            ),
+        const VSpace(12.0),
+        _SelfHostUrlField(
+          textFieldKey: kSelfHostedWebTextInputFieldKey,
+          textController: webUrlTextController,
+          title: LocaleKeys.settings_menu_webURL.tr(),
+          hintText: LocaleKeys.settings_menu_webURLHint.tr(),
+          hintBuilder: (context) => const WebUrlHintWidget(),
+          onSave: (url) => _saveUrl(
+            cloudUrl: cloudUrlTextController.text,
+            webUrl: url,
+            type: AuthenticatorType.appflowyCloudSelfHost,
           ),
         ),
+        const VSpace(12.0),
+        _buildSaveButton(),
       ],
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return Container(
+      height: 36,
+      constraints: const BoxConstraints(minWidth: 78),
+      child: OutlinedRoundedButton(
+        text: LocaleKeys.button_save.tr(),
+        onTap: () => _saveUrl(
+          cloudUrl: cloudUrlTextController.text,
+          webUrl: webUrlTextController.text,
+          type: AuthenticatorType.appflowyCloudSelfHost,
+        ),
+      ),
     );
   }
 
@@ -337,19 +346,22 @@ class _SelfHostSettingsState extends State<_SelfHostSettings> {
     });
 
     if (type == AuthenticatorType.appflowyCloud) {
-      textController.text = kAppflowyCloudUrl;
+      cloudUrlTextController.text = kAppflowyCloudUrl;
+      webUrlTextController.text = ShareConstants.defaultBaseWebDomain;
       _saveUrl(
-        url: textController.text,
+        cloudUrl: kAppflowyCloudUrl,
+        webUrl: ShareConstants.defaultBaseWebDomain,
         type: type,
       );
     }
   }
 
-  void _saveUrl({
-    required String url,
+  Future<void> _saveUrl({
+    required String cloudUrl,
+    required String webUrl,
     required AuthenticatorType type,
-  }) {
-    if (url.isEmpty) {
+  }) async {
+    if (cloudUrl.isEmpty || webUrl.isEmpty) {
       showToastNotification(
         context,
         message: LocaleKeys.settings_menu_pleaseInputValidURL.tr(),
@@ -358,26 +370,61 @@ class _SelfHostSettingsState extends State<_SelfHostSettings> {
       return;
     }
 
-    validateUrl(url).fold(
-      (url) async {
+    final isValid = await _validateUrl(cloudUrl) && await _validateUrl(webUrl);
+
+    if (mounted) {
+      if (isValid) {
         showToastNotification(
           context,
-          message: LocaleKeys.settings_menu_changeUrl.tr(args: [url]),
+          message: LocaleKeys.settings_menu_changeUrl.tr(args: [cloudUrl]),
         );
 
         Navigator.of(context).pop();
-        await useAppFlowyBetaCloudWithURL(url, type);
+
+        await useBaseWebDomain(webUrl);
+        await useAppFlowyBetaCloudWithURL(cloudUrl, type);
+
         await runAppFlowy();
-      },
-      (err) {
+      } else {
         showToastNotification(
           context,
           message: LocaleKeys.settings_menu_pleaseInputValidURL.tr(),
           type: ToastificationType.error,
         );
+      }
+    }
+  }
+
+  Future<bool> _validateUrl(String url) async {
+    return await validateUrl(url).fold(
+      (url) async {
+        return true;
+      },
+      (err) {
         Log.error(err);
+        return false;
       },
     );
+  }
+
+  Future<void> _fetchUrls() async {
+    await Future.wait([
+      getAppFlowyCloudUrl(),
+      getAppFlowyShareDomain(),
+    ]).then((values) {
+      if (values.length != 2) {
+        return;
+      }
+
+      cloudUrlTextController.text = values[0];
+      webUrlTextController.text = values[1];
+
+      if (kAppflowyCloudUrl != values[0]) {
+        setState(() {
+          type = AuthenticatorType.appflowyCloudSelfHost;
+        });
+      }
+    });
   }
 }
 
@@ -486,6 +533,62 @@ class _SupportSettings extends StatelessWidget {
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+class _SelfHostUrlField extends StatelessWidget {
+  const _SelfHostUrlField({
+    required this.textController,
+    required this.title,
+    required this.hintText,
+    required this.onSave,
+    this.textFieldKey,
+    this.hintBuilder,
+  });
+
+  final TextEditingController textController;
+  final String title;
+  final String hintText;
+  final ValueChanged<String> onSave;
+  final Key? textFieldKey;
+  final WidgetBuilder? hintBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHintWidget(context),
+        const VSpace(6.0),
+        SizedBox(
+          height: 36,
+          child: FlowyTextField(
+            key: textFieldKey,
+            controller: textController,
+            autoFocus: false,
+            textStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
+            hintText: hintText,
+            onEditingComplete: () => onSave(textController.text),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHintWidget(BuildContext context) {
+    return Row(
+      children: [
+        FlowyText(
+          title,
+          overflow: TextOverflow.ellipsis,
+        ),
+        hintBuilder?.call(context) ?? const SizedBox.shrink(),
       ],
     );
   }

@@ -2,6 +2,7 @@ import 'package:appflowy/core/config/kv.dart';
 import 'package:appflowy/core/config/kv_keys.dart';
 import 'package:appflowy/env/backend_env.dart';
 import 'package:appflowy/env/env.dart';
+import 'package:appflowy/plugins/shared/share/constants.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy_backend/log.dart';
 
@@ -155,6 +156,13 @@ Future<void> _setAppFlowyCloudUrl(String? url) async {
   await getIt<KeyValueStorage>().set(KVKeys.kAppflowyCloudBaseURL, url ?? '');
 }
 
+Future<void> useBaseWebDomain(String? url) async {
+  await getIt<KeyValueStorage>().set(
+    KVKeys.kAppFlowyBaseShareDomain,
+    url ?? ShareConstants.defaultBaseWebDomain,
+  );
+}
+
 Future<void> useSelfHostedAppFlowyCloudWithURL(String url) async {
   await _setAuthenticatorType(AuthenticatorType.appflowyCloudSelfHost);
   await _setAppFlowyCloudUrl(url);
@@ -172,7 +180,7 @@ Future<void> useLocalServer() async {
   await _setAuthenticatorType(AuthenticatorType.local);
 }
 
-/// Use getIt<AppFlowyCloudSharedEnv>() to get the shared environment.
+// Use getIt<AppFlowyCloudSharedEnv>() to get the shared environment.
 class AppFlowyCloudSharedEnv {
   AppFlowyCloudSharedEnv({
     required AuthenticatorType authenticatorType,
@@ -212,6 +220,8 @@ class AppFlowyCloudSharedEnv {
         base_url: Env.afCloudUrl,
         ws_base_url: await _getAppFlowyCloudWSUrl(Env.afCloudUrl),
         gotrue_url: await _getAppFlowyCloudGotrueUrl(Env.afCloudUrl),
+        enable_sync_trace: false,
+        base_web_domain: Env.baseWebDomain,
       );
 
       return AppFlowyCloudSharedEnv(
@@ -232,21 +242,29 @@ Future<AppFlowyCloudConfiguration> configurationFromUri(
   Uri baseUri,
   String baseUrl,
   AuthenticatorType authenticatorType,
+  String baseShareDomain,
 ) async {
   // In development mode, the app is configured to access the AppFlowy cloud server directly through specific ports.
   // This setup bypasses the need for Nginx, meaning that the AppFlowy cloud should be running without an Nginx server
   // in the development environment.
+  // If you modify following code, please update the corresponding documentation in the appflowy billing.
   if (authenticatorType == AuthenticatorType.appflowyCloudDevelop) {
     return AppFlowyCloudConfiguration(
       base_url: "$baseUrl:8000",
       ws_base_url: "ws://${baseUri.host}:8000/ws/v1",
       gotrue_url: "$baseUrl:9999",
+      enable_sync_trace: true,
+      base_web_domain: ShareConstants.testBaseWebDomain,
     );
   } else {
     return AppFlowyCloudConfiguration(
       base_url: baseUrl,
       ws_base_url: await _getAppFlowyCloudWSUrl(baseUrl),
       gotrue_url: await _getAppFlowyCloudGotrueUrl(baseUrl),
+      enable_sync_trace: await getSyncLogEnabled(),
+      base_web_domain: authenticatorType == AuthenticatorType.appflowyCloud
+          ? ShareConstants.defaultBaseWebDomain
+          : baseShareDomain,
     );
   }
 }
@@ -255,10 +273,16 @@ Future<AppFlowyCloudConfiguration> getAppFlowyCloudConfig(
   AuthenticatorType authenticatorType,
 ) async {
   final baseURL = await getAppFlowyCloudUrl();
+  final baseShareDomain = await getAppFlowyShareDomain();
 
   try {
     final uri = Uri.parse(baseURL);
-    return await configurationFromUri(uri, baseURL, authenticatorType);
+    return await configurationFromUri(
+      uri,
+      baseURL,
+      authenticatorType,
+      baseShareDomain,
+    );
   } catch (e) {
     Log.error("Failed to parse AppFlowy Cloud URL: $e");
     return AppFlowyCloudConfiguration.defaultConfig();
@@ -269,6 +293,30 @@ Future<String> getAppFlowyCloudUrl() async {
   final result =
       await getIt<KeyValueStorage>().get(KVKeys.kAppflowyCloudBaseURL);
   return result ?? kAppflowyCloudUrl;
+}
+
+Future<String> getAppFlowyShareDomain() async {
+  final result =
+      await getIt<KeyValueStorage>().get(KVKeys.kAppFlowyBaseShareDomain);
+  return result ?? ShareConstants.defaultBaseWebDomain;
+}
+
+Future<bool> getSyncLogEnabled() async {
+  final result =
+      await getIt<KeyValueStorage>().get(KVKeys.kAppFlowyEnableSyncTrace);
+
+  if (result == null) {
+    return false;
+  }
+
+  return result.toLowerCase() == "true";
+}
+
+Future<void> setSyncLogEnabled(bool enable) async {
+  await getIt<KeyValueStorage>().set(
+    KVKeys.kAppFlowyEnableSyncTrace,
+    enable.toString().toLowerCase(),
+  );
 }
 
 Future<String> _getAppFlowyCloudWSUrl(String baseURL) async {

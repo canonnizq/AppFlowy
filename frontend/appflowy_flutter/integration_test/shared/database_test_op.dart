@@ -567,6 +567,12 @@ extension AppFlowyDatabaseTest on WidgetTester {
     expect(phantom is PhantomChecklistItem, true);
   }
 
+  void assertPhantomChecklistItemContent(String content) {
+    final phantom = find.byType(PhantomChecklistItem);
+    final text = find.text(content);
+    expect(find.descendant(of: phantom, matching: text), findsOneWidget);
+  }
+
   Future<void> openFirstRowDetailPage() async {
     await hoverOnFirstRowOfGrid();
 
@@ -1458,6 +1464,7 @@ extension AppFlowyDatabaseTest on WidgetTester {
     );
 
     await tapButton(button);
+    await tapButtonWithName(LocaleKeys.button_delete.tr());
   }
 
   Future<void> dragDropRescheduleCalendarEvent() async {

@@ -164,8 +164,8 @@ pub enum ErrorCode {
   #[error("Sql error")]
   SqlError = 58,
 
-  #[error("Http error")]
-  HttpError = 59,
+  #[error("Network error")]
+  NetworkError = 59,
 
   #[error("The content should not be empty")]
   UnexpectedEmpty = 60,
@@ -287,7 +287,7 @@ pub enum ErrorCode {
   #[error("Local AI unavailable")]
   LocalAIUnavailable = 99,
 
-  #[error("File storage limit exceeded")]
+  #[error("Storage limit exceeded")]
   FileStorageLimitExceeded = 100,
 
   #[error("AI Response limit exceeded")]
@@ -356,6 +356,21 @@ pub enum ErrorCode {
 
   #[error("Requested namespace has one or more invalid characters")]
   CustomNamespaceInvalidCharacter = 122,
+
+  #[error("Requested namespace has one or more invalid characters")]
+  AIServiceUnavailable = 123,
+
+  #[error("AI Image Response limit exceeded")]
+  AIImageResponseLimitExceeded = 124,
+
+  #[error("AI Max Required")]
+  AIMaxRequired = 125,
+
+  #[error("View is locked")]
+  ViewIsLocked = 126,
+
+  #[error("Request timeout")]
+  RequestTimeout = 127,
 }
 
 impl ErrorCode {

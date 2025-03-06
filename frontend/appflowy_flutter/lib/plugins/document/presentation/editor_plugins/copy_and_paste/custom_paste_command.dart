@@ -14,6 +14,7 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:appflowy_editor_plugins/appflowy_editor_plugins.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:http/http.dart' as http;
 import 'package:string_validator/string_validator.dart';
 
 /// - support
@@ -29,8 +30,37 @@ final CommandShortcutEvent customPasteCommand = CommandShortcutEvent(
   handler: _pasteCommandHandler,
 );
 
+final CommandShortcutEvent customPastePlainTextCommand = CommandShortcutEvent(
+  key: 'paste the plain content',
+  getDescription: () => AppFlowyEditorL10n.current.cmdPasteContent,
+  command: 'ctrl+shift+v',
+  macOSCommand: 'cmd+shift+v',
+  handler: _pastePlainCommandHandler,
+);
+
 CommandShortcutEventHandler _pasteCommandHandler = (editorState) {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return KeyEventResult.ignored;
+  }
+
   doPaste(editorState).then((_) {
+    final context = editorState.document.root.context;
+    if (context != null && context.mounted) {
+      context.read<ClipboardState>().didPaste();
+    }
+  });
+
+  return KeyEventResult.handled;
+};
+
+CommandShortcutEventHandler _pastePlainCommandHandler = (editorState) {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return KeyEventResult.ignored;
+  }
+
+  doPlainPaste(editorState).then((_) {
     final context = editorState.document.root.context;
     if (context != null && context.mounted) {
       context.read<ClipboardState>().didPaste();
@@ -114,7 +144,14 @@ Future<void> doPaste(EditorState editorState) async {
   }
 
   if (plainText != null && plainText.isNotEmpty) {
-    await editorState.pastePlainText(plainText);
+    final currentSelection = editorState.selection;
+    if (currentSelection == null) {
+      await editorState.updateSelectionWithReason(
+        selection,
+        reason: SelectionUpdateReason.uiEvent,
+      );
+    }
+    await editorState.pasteText(plainText);
     return Log.info('Pasted plain text');
   }
 
@@ -125,17 +162,14 @@ Future<bool> _pasteAsLinkPreview(
   EditorState editorState,
   String? text,
 ) async {
-  // 1. the url should contains a protocol
-  // 2. the url should not be an image url
-  if (text == null ||
-      text.isImageUrl() ||
-      !isURL(text, {'require_protocol': true})) {
+  // the url should contain a protocol
+  if (text == null || !isURL(text, {'require_protocol': true})) {
     return false;
   }
 
   final selection = editorState.selection;
   // Apply the update only when the selection is collapsed
-  //  and at the start of the current line
+  // and at the start of the current line
   if (selection == null ||
       !selection.isCollapsed ||
       selection.startIndex != 0) {
@@ -144,44 +178,87 @@ Future<bool> _pasteAsLinkPreview(
 
   final node = editorState.getNodeAtPath(selection.start.path);
   // Apply the update only when the current node is a paragraph
-  //  and the paragraph is empty
+  // and the paragraph is empty
   if (node == null ||
       node.type != ParagraphBlockKeys.type ||
       node.delta?.toPlainText().isNotEmpty == true) {
     return false;
   }
 
-  // 1. insert the text with link format
-  // 2. convert it the link preview node
-  final textTransaction = editorState.transaction;
-  textTransaction.insertText(
-    node,
-    0,
-    text,
-    attributes: {AppFlowyRichTextKeys.href: text},
-  );
+  final bool isImageUrl;
+  try {
+    isImageUrl = await _isImageUrl(text);
+  } catch (e) {
+    Log.info('unable to get content header');
+    return false;
+  }
+
+  // insert the text with link format
+  final textTransaction = editorState.transaction
+    ..insertText(
+      node,
+      0,
+      text,
+      attributes: {AppFlowyRichTextKeys.href: text},
+    );
   await editorState.apply(
     textTransaction,
     skipHistoryDebounce: true,
   );
 
-  final linkPreviewTransaction = editorState.transaction;
-  final insertedNodes = [
-    linkPreviewNode(url: text),
+  // convert it to image or link preview node
+  final replacementInsertedNodes = [
+    isImageUrl ? imageNode(url: text) : linkPreviewNode(url: text),
     // if the next node is null, insert a empty paragraph node
     if (node.next == null) paragraphNode(),
   ];
-  linkPreviewTransaction.insertNodes(
-    selection.start.path,
-    insertedNodes,
-  );
-  linkPreviewTransaction.deleteNode(node);
-  linkPreviewTransaction.afterSelection = Selection.collapsed(
-    Position(
-      path: node.path.next,
-    ),
-  );
-  await editorState.apply(linkPreviewTransaction);
+
+  final replacementTransaction = editorState.transaction
+    ..insertNodes(
+      selection.start.path,
+      replacementInsertedNodes,
+    )
+    ..deleteNode(node)
+    ..afterSelection = Selection.collapsed(
+      Position(path: node.path.next),
+    );
+
+  await editorState.apply(replacementTransaction);
 
   return true;
+}
+
+Future<void> doPlainPaste(EditorState editorState) async {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return;
+  }
+
+  EditorNotification.paste().post();
+
+  // dispatch the paste event
+  final data = await getIt<ClipboardService>().getData();
+  final plainText = data.plainText;
+  if (plainText != null && plainText.isNotEmpty) {
+    await editorState.pastePlainText(plainText);
+    Log.info('Pasted plain text');
+    return;
+  }
+
+  Log.info('unable to parse the clipboard content');
+  return;
+}
+
+Future<bool> _isImageUrl(String text) async {
+  final response = await http.head(Uri.parse(text));
+
+  if (response.statusCode == 200) {
+    final contentType = response.headers['content-type'];
+    if (contentType != null) {
+      return contentType.startsWith('image/') &&
+          defaultImageExtensions.any(contentType.contains);
+    }
+  }
+
+  throw 'bad status code';
 }

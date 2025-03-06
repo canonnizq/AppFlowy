@@ -49,6 +49,7 @@ class KVKeys {
   ///  {'SidebarFolderCategoryType.value': true}
   static const String expandedFolders = 'expandedFolders';
 
+  /// @deprecated in version 0.7.6
   /// The key for saving if showing the rename dialog when creating a new file
   ///
   /// The value is a boolean string.
@@ -57,6 +58,8 @@ class KVKeys {
 
   static const String kCloudType = 'kCloudType';
   static const String kAppflowyCloudBaseURL = 'kAppFlowyCloudBaseURL';
+  static const String kAppFlowyBaseShareDomain = 'kAppFlowyBaseShareDomain';
+  static const String kAppFlowyEnableSyncTrace = 'kAppFlowyEnableSyncTrace';
 
   /// The key for saving the text scale factor.
   ///
@@ -107,4 +110,14 @@ class KVKeys {
   ///
   /// The value is a boolean string
   static const String hasUpgradedSpace = 'hasUpgradedSpace060';
+
+  /// The key for saving the recent icons
+  ///
+  /// The value is a json string of [RecentIcons]
+  static const String recentIcons = 'kRecentIcons';
+
+  /// The key for saving compact mode ids for node or databse view
+  ///
+  /// The value is a json list of id
+  static const String compactModeIds = 'compactModeIds';
 }

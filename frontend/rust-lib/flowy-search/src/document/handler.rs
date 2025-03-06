@@ -57,11 +57,11 @@ impl SearchHandler for DocumentSearchHandler {
 
     // Grab all views from folder cache
     // Notice that `get_all_view_pb` returns Views that don't include trashed and private views
-    let mut views = self.folder_manager.get_all_views_pb().await?.into_iter();
+    let views = self.folder_manager.get_all_views_pb().await?;
     let mut search_results: Vec<SearchResultPB> = vec![];
 
     for result in results {
-      if let Some(view) = views.find(|v| v.id == result.object_id) {
+      if let Some(view) = views.iter().find(|v| v.id == result.object_id) {
         // If there is no View for the result, we don't add it to the results
         // If possible we will extract the icon to display for the result
         let icon: Option<ResultIconPB> = match view.icon.clone() {
@@ -81,10 +81,7 @@ impl SearchHandler for DocumentSearchHandler {
           id: result.object_id.clone(),
           data: view.name.clone(),
           icon,
-          // We reverse the score, the cloud search score is based on
-          // 1 being the worst result, and closer to 0 being good result, that is
-          // the opposite of local search.
-          score: 1.0 - result.score,
+          score: result.score,
           workspace_id: result.workspace_id,
           preview: result.preview,
         });

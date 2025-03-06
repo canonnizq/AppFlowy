@@ -6,11 +6,13 @@ import 'package:appflowy/plugins/document/application/document_awareness_metadat
 import 'package:appflowy/plugins/document/application/document_collab_adapter.dart';
 import 'package:appflowy/plugins/document/application/document_data_pb_extension.dart';
 import 'package:appflowy/plugins/document/application/document_listener.dart';
+import 'package:appflowy/plugins/document/application/document_rules.dart';
 import 'package:appflowy/plugins/document/application/document_service.dart';
 import 'package:appflowy/plugins/document/application/editor_transaction_adapter.dart';
 import 'package:appflowy/plugins/trash/application/trash_service.dart';
 import 'package:appflowy/shared/feature_flags.dart';
 import 'package:appflowy/startup/startup.dart';
+import 'package:appflowy/startup/tasks/app_widget.dart';
 import 'package:appflowy/startup/tasks/device_info_task.dart';
 import 'package:appflowy/user/application/auth/auth_service.dart';
 import 'package:appflowy/util/color_generator/color_generator.dart';
@@ -18,19 +20,14 @@ import 'package:appflowy/util/color_to_hex_string.dart';
 import 'package:appflowy/util/debounce.dart';
 import 'package:appflowy/util/throttle.dart';
 import 'package:appflowy/workspace/application/view/view_listener.dart';
+import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-document/entities.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-document/protobuf.dart';
 import 'package:appflowy_backend/protobuf/flowy-error/errors.pb.dart';
 import 'package:appflowy_backend/protobuf/flowy-user/protobuf.dart';
 import 'package:appflowy_editor/appflowy_editor.dart'
-    show
-        EditorState,
-        AppFlowyEditorLogLevel,
-        TransactionTime,
-        Selection,
-        Position,
-        paragraphNode;
+    show AppFlowyEditorLogLevel, EditorState, TransactionTime;
 import 'package:appflowy_result/appflowy_result.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -38,14 +35,23 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'document_bloc.freezed.dart';
 
+/// Enable this flag to enable the internal log for
+/// - document diff
+/// - document integrity check
+/// - document sync state
+/// - document awareness states
 bool enableDocumentInternalLog = false;
+
+final Map<String, DocumentBloc> _documentBlocMap = {};
 
 class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
   DocumentBloc({
     required this.documentId,
     this.databaseViewId,
     this.rowId,
-  })  : _documentListener = DocumentListener(id: documentId),
+    bool saveToBlocMap = true,
+  })  : _saveToBlocMap = saveToBlocMap,
+        _documentListener = DocumentListener(id: documentId),
         _syncStateListener = DocumentSyncStateListener(id: documentId),
         super(DocumentState.initial()) {
     _viewListener = databaseViewId == null && rowId == null
@@ -54,11 +60,16 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     on<DocumentEvent>(_onDocumentEvent);
   }
 
+  static DocumentBloc? findOpen(String documentId) =>
+      _documentBlocMap[documentId];
+
   /// For a normal document, the document id is the same as the view id
   final String documentId;
 
   final String? databaseViewId;
   final String? rowId;
+
+  final bool _saveToBlocMap;
 
   final DocumentListener _documentListener;
   final DocumentSyncStateListener _syncStateListener;
@@ -73,6 +84,8 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     documentId: documentId,
     documentService: _documentService,
   );
+
+  late final DocumentRules _documentRules;
 
   StreamSubscription? _transactionSubscription;
 
@@ -95,6 +108,9 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
   @override
   Future<void> close() async {
     isClosing = true;
+    if (_saveToBlocMap) {
+      _documentBlocMap.remove(documentId);
+    }
     await checkDocumentIntegrity();
     await _cancelSubscriptions();
     _clearEditorState();
@@ -116,6 +132,8 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
 
     _syncTimer?.cancel();
     _syncTimer = null;
+    state.editorState?.selectionNotifier
+        .removeListener(_debounceOnSelectionUpdate);
     state.editorState?.service.keyboardService?.closeKeyboard();
     state.editorState?.dispose();
   }
@@ -126,6 +144,9 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
   ) async {
     await event.when(
       initial: () async {
+        if (_saveToBlocMap) {
+          _documentBlocMap[documentId] = this;
+        }
         final result = await _fetchDocumentState();
         _onViewChanged();
         _onDocumentChanged();
@@ -238,13 +259,20 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     final editorState = EditorState(document: document);
 
     _documentCollabAdapter = DocumentCollabAdapter(editorState, documentId);
+    _documentRules = DocumentRules(editorState: editorState);
 
     // subscribe to the document change from the editor
     _transactionSubscription = editorState.transactionStream.listen(
-      (event) async {
-        final time = event.$1;
-        final transaction = event.$2;
+      (value) async {
+        final time = value.$1;
+        final transaction = value.$2;
+        final options = value.$3;
         if (time != TransactionTime.before) {
+          return;
+        }
+
+        if (options.inMemoryUpdate) {
+          Log.info('skip transaction for in-memory update');
           return;
         }
 
@@ -258,7 +286,7 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
         await _transactionAdapter.apply(transaction, editorState);
 
         // check if the document is empty.
-        await _applyRules();
+        await _documentRules.applyRules(value: value);
 
         if (enableDocumentInternalLog) {
           Log.debug(
@@ -281,34 +309,12 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
         ..level = AppFlowyEditorLogLevel.all
         ..handler = (log) {
           if (enableDocumentInternalLog) {
-            Log.info(log);
+            // Log.info(log);
           }
         };
     }
 
     return editorState;
-  }
-
-  Future<void> _applyRules() async {
-    await Future.wait([
-      _ensureAtLeastOneParagraphExists(),
-    ]);
-  }
-
-  Future<void> _ensureAtLeastOneParagraphExists() async {
-    final editorState = state.editorState;
-    if (editorState == null) {
-      return;
-    }
-    final document = editorState.document;
-    if (document.root.children.isEmpty) {
-      final transaction = editorState.transaction;
-      transaction.insertNode([0], paragraphNode());
-      transaction.afterSelection = Selection.collapsed(
-        Position(path: [0]),
-      );
-      await editorState.apply(transaction);
-    }
   }
 
   Future<void> _onDocumentStateUpdate(DocEventPB docEvent) async {
@@ -340,6 +346,9 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
   }
 
   void _throttleSyncDoc(DocEventPB docEvent) {
+    if (enableDocumentInternalLog) {
+      Log.info('[DocumentBloc] throttle sync doc: ${docEvent.toProto3Json()}');
+    }
     _syncThrottle.call(() {
       _onDocumentStateUpdate(docEvent);
     });
@@ -366,7 +375,7 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     final basicColor = ColorGenerator(id.toString()).toColor();
     final metadata = DocumentAwarenessMetadata(
       cursorColor: basicColor.toHexString(),
-      selectionColor: basicColor.withOpacity(0.6).toHexString(),
+      selectionColor: basicColor.withValues(alpha: 0.6).toHexString(),
       userName: user.name,
       userAvatar: user.iconUrl,
     );
@@ -389,7 +398,7 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     final basicColor = ColorGenerator(id.toString()).toColor();
     final metadata = DocumentAwarenessMetadata(
       cursorColor: basicColor.toHexString(),
-      selectionColor: basicColor.withOpacity(0.6).toHexString(),
+      selectionColor: basicColor.withValues(alpha: 0.6).toHexString(),
       userName: user.name,
       userAvatar: user.iconUrl,
     );
@@ -397,6 +406,10 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
       documentId: documentId,
       metadata: jsonEncode(metadata.toJson()),
     );
+  }
+
+  Future<void> forceReloadDocumentState() {
+    return _documentCollabAdapter.syncV3();
   }
 
   // this is only used for debug mode
@@ -421,9 +434,17 @@ class DocumentBloc extends Bloc<DocumentEvent, DocumentState> {
     if (!deepEqual) {
       Log.error('document integrity check failed');
       // Enable it to debug the document integrity check failed
-      // Log.error('cloud doc: $cloudJson');
-      // Log.error('local doc: $localJson');
-      assert(false, 'document integrity check failed');
+      Log.error('cloud doc: $cloudJson');
+      Log.error('local doc: $localJson');
+
+      final context = AppGlobals.rootNavKey.currentContext;
+      if (context != null && context.mounted) {
+        showToastNotification(
+          context,
+          message: 'document integrity check failed',
+          type: ToastificationType.error,
+        );
+      }
     }
   }
 }

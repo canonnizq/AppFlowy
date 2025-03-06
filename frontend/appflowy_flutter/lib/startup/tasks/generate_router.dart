@@ -29,6 +29,7 @@ import 'package:appflowy/user/application/auth/auth_service.dart';
 import 'package:appflowy/user/presentation/presentation.dart';
 import 'package:appflowy/workspace/presentation/home/desktop_home_screen.dart';
 import 'package:appflowy/workspace/presentation/settings/widgets/feature_flags/mobile_feature_flag_screen.dart';
+import 'package:appflowy_backend/log.dart';
 import 'package:appflowy_backend/protobuf/flowy-database2/protobuf.dart';
 import 'package:flowy_infra/time/duration.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +37,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sheet/route.dart';
 import 'package:universal_platform/universal_platform.dart';
+
+import '../../shared/icon_emoji_picker/tab.dart';
 
 GoRouter generateRouter(Widget child) {
   return GoRouter(
@@ -51,7 +54,7 @@ GoRouter generateRouter(Widget child) {
       _encryptSecretScreenRoute(),
       _workspaceErrorScreenRoute(),
       // Desktop only
-      if (!UniversalPlatform.isMobile) _desktopHomeScreenRoute(),
+      if (UniversalPlatform.isDesktop) _desktopHomeScreenRoute(),
       // Mobile only
       if (UniversalPlatform.isMobile) ...[
         // settings
@@ -281,10 +284,35 @@ GoRoute _mobileEmojiPickerPageRoute() {
     pageBuilder: (context, state) {
       final title =
           state.uri.queryParameters[MobileEmojiPickerScreen.pageTitle];
+      final selectTabs =
+          state.uri.queryParameters[MobileEmojiPickerScreen.selectTabs] ?? '';
+      final selectedType = state
+          .uri.queryParameters[MobileEmojiPickerScreen.iconSelectedType]
+          ?.toPickerTabType();
+      final documentId =
+          state.uri.queryParameters[MobileEmojiPickerScreen.uploadDocumentId];
+      List<PickerTabType> tabs = [];
+      try {
+        tabs = selectTabs
+            .split('-')
+            .map((e) => PickerTabType.values.byName(e))
+            .toList();
+      } on ArgumentError catch (e) {
+        Log.error('convert selectTabs to pickerTab error', e);
+      }
       return MaterialExtendedPage(
-        child: MobileEmojiPickerScreen(
-          title: title,
-        ),
+        child: tabs.isEmpty
+            ? MobileEmojiPickerScreen(
+                title: title,
+                selectedType: selectedType,
+                documentId: documentId,
+              )
+            : MobileEmojiPickerScreen(
+                title: title,
+                selectedType: selectedType,
+                tabs: tabs,
+                documentId: documentId,
+              ),
       );
     },
   );
@@ -502,6 +530,21 @@ GoRoute _mobileEditorScreenRoute() {
       final blockId =
           state.uri.queryParameters[MobileDocumentScreen.viewBlockId];
 
+      final selectTabs =
+          state.uri.queryParameters[MobileDocumentScreen.viewSelectTabs] ?? '';
+      List<PickerTabType> tabs = [];
+      try {
+        tabs = selectTabs
+            .split('-')
+            .map((e) => PickerTabType.values.byName(e))
+            .toList();
+      } on ArgumentError catch (e) {
+        Log.error('convert selectTabs to pickerTab error', e);
+      }
+      if (tabs.isEmpty) {
+        tabs = const [PickerTabType.emoji, PickerTabType.icon];
+      }
+
       return MaterialExtendedPage(
         child: MobileDocumentScreen(
           id: id,
@@ -509,6 +552,7 @@ GoRoute _mobileEditorScreenRoute() {
           showMoreButton: showMoreButton ?? true,
           fixedTitle: fixedTitle,
           blockId: blockId,
+          tabs: tabs,
         ),
       );
     },

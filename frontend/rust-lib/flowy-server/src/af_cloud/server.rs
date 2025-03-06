@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,7 +6,6 @@ use crate::af_cloud::define::ServerUser;
 use anyhow::Error;
 use arc_swap::ArcSwap;
 use client_api::collab_sync::ServerCollabMessage;
-use client_api::entity::ai_dto::AIModel;
 use client_api::entity::UserMessage;
 use client_api::notify::{TokenState, TokenStateReceiver};
 use client_api::ws::{
@@ -25,7 +23,7 @@ use flowy_server_pub::af_cloud_config::AFCloudConfiguration;
 use flowy_storage_pub::cloud::StorageCloudService;
 use flowy_user_pub::cloud::{UserCloudService, UserUpdate};
 use flowy_user_pub::entities::UserTokenState;
-use lib_dispatch::prelude::af_spawn;
+
 use rand::Rng;
 use semver::Version;
 use tokio::select;
@@ -124,7 +122,7 @@ impl AppFlowyServer for AppFlowyCloudServer {
   }
 
   fn set_ai_model(&self, ai_model: &str) -> Result<(), Error> {
-    self.client.set_ai_model(AIModel::from_str(ai_model)?);
+    self.client.set_ai_model(ai_model.to_string());
     Ok(())
   }
 
@@ -132,7 +130,7 @@ impl AppFlowyServer for AppFlowyCloudServer {
     let mut token_state_rx = self.client.subscribe_token_state();
     let (watch_tx, watch_rx) = watch::channel(UserTokenState::Init);
     let weak_client = Arc::downgrade(&self.client);
-    af_spawn(async move {
+    tokio::spawn(async move {
       while let Ok(token_state) = token_state_rx.recv().await {
         if let Some(client) = weak_client.upgrade() {
           match token_state {
@@ -172,7 +170,7 @@ impl AppFlowyServer for AppFlowyCloudServer {
     };
     let mut user_change = self.ws_client.subscribe_user_changed();
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    af_spawn(async move {
+    tokio::spawn(async move {
       while let Ok(user_message) = user_change.recv().await {
         if let UserMessage::ProfileChange(change) = user_message {
           let user_update = UserUpdate {
@@ -270,7 +268,10 @@ impl AppFlowyServer for AppFlowyCloudServer {
     let client = AFServerImpl {
       client: self.get_client(),
     };
-    Some(Arc::new(AFCloudFileStorageServiceImpl::new(client)))
+    Some(Arc::new(AFCloudFileStorageServiceImpl::new(
+      client,
+      self.config.maximum_upload_file_size_in_bytes,
+    )))
   }
 
   fn search_service(&self) -> Option<Arc<dyn SearchCloudService>> {
@@ -299,7 +300,7 @@ fn spawn_ws_conn(
   let cancellation_token = Arc::new(ArcSwap::new(Arc::new(CancellationToken::new())));
   let cloned_cancellation_token = cancellation_token.clone();
 
-  af_spawn(async move {
+  tokio::spawn(async move {
     if let Some(ws_client) = weak_ws_client.upgrade() {
       let mut state_recv = ws_client.subscribe_connect_state();
       while let Ok(state) = state_recv.recv().await {
@@ -328,7 +329,7 @@ fn spawn_ws_conn(
   });
 
   let weak_ws_client = Arc::downgrade(ws_client);
-  af_spawn(async move {
+  tokio::spawn(async move {
     while let Ok(token_state) = token_state_rx.recv().await {
       info!("🟢token state: {:?}", token_state);
       match token_state {

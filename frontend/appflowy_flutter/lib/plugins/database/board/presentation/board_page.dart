@@ -1,9 +1,5 @@
 import 'dart:io';
 
-import 'package:appflowy/util/field_type_extension.dart';
-import 'package:flutter/material.dart' hide Card;
-import 'package:flutter/services.dart';
-
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/mobile/presentation/database/board/mobile_board_page.dart';
@@ -19,6 +15,9 @@ import 'package:appflowy/plugins/database/widgets/cell/card_cell_style_maps/desk
 import 'package:appflowy/plugins/database/widgets/row/row_detail.dart';
 import 'package:appflowy/shared/conditional_listenable_builder.dart';
 import 'package:appflowy/shared/flowy_error_page.dart';
+import 'package:appflowy/util/field_type_extension.dart';
+import 'package:appflowy/workspace/application/user/user_workspace_bloc.dart';
+import 'package:appflowy/workspace/application/view/view_lock_status_bloc.dart';
 import 'package:appflowy_backend/protobuf/flowy-database2/protobuf.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:appflowy_board/appflowy_board.dart';
@@ -26,13 +25,14 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/theme_extension.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/hover.dart';
+import 'package:flutter/material.dart' hide Card;
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:universal_platform/universal_platform.dart';
 
 import '../../widgets/card/card.dart';
 import '../../widgets/cell/card_cell_builder.dart';
 import '../application/board_bloc.dart';
-
 import 'toolbar/board_setting_bar.dart';
 import 'widgets/board_focus_scope.dart';
 import 'widgets/board_hidden_groups.dart';
@@ -54,6 +54,7 @@ class BoardPageTabBarBuilderImpl extends DatabaseTabBarItemBuilder {
               key: _makeValueKey(controller),
               view: view,
               databaseController: controller,
+              shrinkWrap: shrinkWrap,
             )
           : MobileBoardPage(
               key: _makeValueKey(controller),
@@ -98,6 +99,7 @@ class DesktopBoardPage extends StatefulWidget {
     required this.view,
     required this.databaseController,
     this.onEditStateChanged,
+    this.shrinkWrap = false,
   });
 
   final ViewPB view;
@@ -106,6 +108,9 @@ class DesktopBoardPage extends StatefulWidget {
 
   /// Called when edit state changed
   final VoidCallback? onEditStateChanged;
+
+  /// If true, the board will shrink wrap its content
+  final bool shrinkWrap;
 
   @override
   State<DesktopBoardPage> createState() => _DesktopBoardPageState();
@@ -179,9 +184,7 @@ class _DesktopBoardPageState extends State<DesktopBoardPage> {
     _focusScope.dispose();
     _boardBloc.close();
     _boardActionsCubit.close();
-    _didCreateRow
-      ..removeListener(_handleDidCreateRow)
-      ..dispose();
+    _didCreateRow.dispose();
     super.dispose();
   }
 
@@ -189,27 +192,21 @@ class _DesktopBoardPageState extends State<DesktopBoardPage> {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<BoardBloc>.value(
-          value: _boardBloc,
-        ),
-        BlocProvider.value(
-          value: _boardActionsCubit,
-        ),
+        BlocProvider<BoardBloc>.value(value: _boardBloc),
+        BlocProvider.value(value: _boardActionsCubit),
       ],
       child: BlocBuilder<BoardBloc, BoardState>(
         builder: (context, state) => state.maybeMap(
           loading: (_) => const Center(
             child: CircularProgressIndicator.adaptive(),
           ),
-          error: (err) => Center(
-            child: AppFlowyErrorPage(
-              error: err.error,
-            ),
-          ),
+          error: (err) => Center(child: AppFlowyErrorPage(error: err.error)),
           orElse: () => _BoardContent(
+            shrinkWrap: widget.shrinkWrap,
             onEditStateChanged: widget.onEditStateChanged,
             focusScope: _focusScope,
             boardController: _boardController,
+            view: widget.view,
           ),
         ),
       ),
@@ -244,12 +241,16 @@ class _BoardContent extends StatefulWidget {
   const _BoardContent({
     required this.boardController,
     required this.focusScope,
+    required this.view,
     this.onEditStateChanged,
+    this.shrinkWrap = false,
   });
 
   final AppFlowyBoardController boardController;
   final BoardFocusScope focusScope;
   final VoidCallback? onEditStateChanged;
+  final bool shrinkWrap;
+  final ViewPB view;
 
   @override
   State<_BoardContent> createState() => _BoardContentState();
@@ -284,6 +285,9 @@ class _BoardContentState extends State<_BoardContent> {
 
   @override
   Widget build(BuildContext context) {
+    final horizontalPadding =
+        context.read<DatabasePluginWidgetBuilderSize?>()?.horizontalPadding ??
+            0.0;
     return MultiBlocListener(
       listeners: [
         BlocListener<BoardBloc, BoardState>(
@@ -336,61 +340,85 @@ class _BoardContentState extends State<_BoardContent> {
           focusScope: widget.focusScope,
           child: Padding(
             padding: const EdgeInsets.only(top: 8.0),
-            child: AppFlowyBoard(
-              boardScrollController: scrollManager,
-              scrollController: scrollController,
-              controller: context.read<BoardBloc>().boardController,
-              groupConstraints: const BoxConstraints.tightFor(width: 256),
-              config: config,
-              leading: HiddenGroupsColumn(margin: config.groupHeaderPadding),
-              trailing: context
-                          .read<BoardBloc>()
-                          .groupingFieldType
-                          ?.canCreateNewGroup ??
-                      false
-                  ? BoardTrailing(scrollController: scrollController)
-                  : const HSpace(40),
-              headerBuilder: (_, groupData) => BlocProvider.value(
-                value: context.read<BoardBloc>(),
-                child: BoardColumnHeader(
-                  databaseController: databaseController,
-                  groupData: groupData,
-                  margin: config.groupHeaderPadding,
-                ),
-              ),
-              footerBuilder: (_, groupData) => MultiBlocProvider(
-                providers: [
-                  BlocProvider.value(
+            child: ValueListenableBuilder(
+              valueListenable: databaseController.compactModeNotifier,
+              builder: (context, compactMode, _) {
+                return AppFlowyBoard(
+                  boardScrollController: scrollManager,
+                  scrollController: scrollController,
+                  shrinkWrap: widget.shrinkWrap,
+                  controller: context.read<BoardBloc>().boardController,
+                  groupConstraints:
+                      BoxConstraints.tightFor(width: compactMode ? 196 : 256),
+                  config: config,
+                  leading: HiddenGroupsColumn(
+                    shrinkWrap: widget.shrinkWrap,
+                    margin: config.groupHeaderPadding +
+                        EdgeInsets.only(
+                          left: widget.shrinkWrap ? horizontalPadding : 0.0,
+                        ),
+                  ),
+                  trailing: context
+                              .read<BoardBloc>()
+                              .groupingFieldType
+                              ?.canCreateNewGroup ??
+                          false
+                      ? BoardTrailing(scrollController: scrollController)
+                      : const HSpace(40),
+                  headerBuilder: (_, groupData) => BlocProvider.value(
                     value: context.read<BoardBloc>(),
+                    child: BoardColumnHeader(
+                      databaseController: databaseController,
+                      groupData: groupData,
+                      margin: config.groupHeaderPadding,
+                    ),
                   ),
-                  BlocProvider.value(
-                    value: context.read<BoardActionsCubit>(),
+                  footerBuilder: (_, groupData) => MultiBlocProvider(
+                    providers: [
+                      BlocProvider.value(value: context.read<BoardBloc>()),
+                      BlocProvider.value(
+                        value: context.read<BoardActionsCubit>(),
+                      ),
+                    ],
+                    child: BoardColumnFooter(
+                      columnData: groupData,
+                      boardConfig: config,
+                      scrollManager: scrollManager,
+                    ),
                   ),
-                ],
-                child: BoardColumnFooter(
-                  columnData: groupData,
-                  boardConfig: config,
-                  scrollManager: scrollManager,
-                ),
-              ),
-              cardBuilder: (_, column, columnItem) => MultiBlocProvider(
-                key: ValueKey("board_card_${column.id}_${columnItem.id}"),
-                providers: [
-                  BlocProvider<BoardBloc>.value(
-                    value: context.read<BoardBloc>(),
+                  cardBuilder: (context, column, columnItem) =>
+                      MultiBlocProvider(
+                    key: ValueKey("board_card_${column.id}_${columnItem.id}"),
+                    providers: [
+                      BlocProvider<BoardBloc>.value(
+                        value: context.read<BoardBloc>(),
+                      ),
+                      BlocProvider.value(
+                        value: context.read<BoardActionsCubit>(),
+                      ),
+                      BlocProvider(
+                        create: (_) => ViewLockStatusBloc(view: widget.view)
+                          ..add(ViewLockStatusEvent.initial()),
+                      ),
+                    ],
+                    child: BlocBuilder<ViewLockStatusBloc, ViewLockStatusState>(
+                      builder: (context, state) {
+                        return IgnorePointer(
+                          ignoring: state.isLocked,
+                          child: _BoardCard(
+                            afGroupData: column,
+                            groupItem: columnItem as GroupItem,
+                            boardConfig: config,
+                            notifier: widget.focusScope,
+                            cellBuilder: cellBuilder,
+                            compactMode: compactMode,
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                  BlocProvider.value(
-                    value: context.read<BoardActionsCubit>(),
-                  ),
-                ],
-                child: _BoardCard(
-                  afGroupData: column,
-                  groupItem: columnItem as GroupItem,
-                  boardConfig: config,
-                  notifier: widget.focusScope,
-                  cellBuilder: cellBuilder,
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
@@ -534,7 +562,9 @@ class _BoardColumnFooterState extends State<BoardColumnFooter> {
               color: Theme.of(context).hintColor,
             ),
             onTap: () {
-              setState(() => _isCreating = true);
+              context
+                  .read<BoardActionsCubit>()
+                  .startCreateBottomRow(widget.columnData.id);
             },
           ),
         ),
@@ -550,6 +580,7 @@ class _BoardCard extends StatefulWidget {
     required this.boardConfig,
     required this.cellBuilder,
     required this.notifier,
+    required this.compactMode,
   });
 
   final AppFlowyGroupData afGroupData;
@@ -557,6 +588,7 @@ class _BoardCard extends StatefulWidget {
   final AppFlowyBoardConfig boardConfig;
   final CardCellBuilder cellBuilder;
   final BoardFocusScope notifier;
+  final bool compactMode;
 
   @override
   State<_BoardCard> createState() => _BoardCardState();
@@ -643,15 +675,21 @@ class _BoardCardState extends State<_BoardCard> {
 
             return previousContainsFocus != currentContainsFocus;
           },
-          builder: (context, focusedItems, child) => Container(
-            margin: widget.boardConfig.cardMargin,
-            decoration: _makeBoxDecoration(
-              context,
-              groupData.group.groupId,
-              widget.groupItem.id,
-            ),
-            child: child,
-          ),
+          builder: (context, focusedItems, child) {
+            final cardMargin = widget.boardConfig.cardMargin;
+            final margin = widget.compactMode
+                ? cardMargin - EdgeInsets.symmetric(horizontal: 2)
+                : cardMargin;
+            return Container(
+              margin: margin,
+              decoration: _makeBoxDecoration(
+                context,
+                groupData.group.groupId,
+                widget.groupItem.id,
+              ),
+              child: child,
+            );
+          },
           child: RowCard(
             fieldController: databaseController.fieldController,
             rowMeta: rowMeta,
@@ -718,19 +756,19 @@ class _BoardCardState extends State<_BoardCard> {
                   .isFocused(GroupedRowId(rowId: rowId, groupId: groupId))
               ? Theme.of(context).colorScheme.primary
               : Theme.of(context).brightness == Brightness.light
-                  ? const Color(0xFF1F2329).withOpacity(0.12)
+                  ? const Color(0xFF1F2329).withValues(alpha: 0.12)
                   : const Color(0xFF59647A),
         ),
       ),
       boxShadow: [
         BoxShadow(
           blurRadius: 4,
-          color: const Color(0xFF1F2329).withOpacity(0.02),
+          color: const Color(0xFF1F2329).withValues(alpha: 0.02),
         ),
         BoxShadow(
           blurRadius: 4,
           spreadRadius: -2,
-          color: const Color(0xFF1F2329).withOpacity(0.02),
+          color: const Color(0xFF1F2329).withValues(alpha: 0.02),
         ),
       ],
     );
@@ -860,10 +898,13 @@ void _openCard({
 
   FlowyOverlay.show(
     context: context,
-    builder: (_) => RowDetailPage(
-      databaseController: databaseController,
-      rowController: rowController,
-      userProfile: context.read<BoardBloc>().userProfile,
+    builder: (_) => BlocProvider.value(
+      value: context.read<UserWorkspaceBloc>(),
+      child: RowDetailPage(
+        databaseController: databaseController,
+        rowController: rowController,
+        userProfile: context.read<BoardBloc>().userProfile,
+      ),
     ),
   );
 }

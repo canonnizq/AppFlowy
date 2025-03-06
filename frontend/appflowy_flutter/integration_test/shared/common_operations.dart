@@ -4,20 +4,28 @@ import 'package:appflowy/core/config/kv.dart';
 import 'package:appflowy/core/config/kv_keys.dart';
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
+import 'package:appflowy/mobile/presentation/base/type_option_menu_item.dart';
 import 'package:appflowy/mobile/presentation/presentation.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/base/emoji_picker_button.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/mobile_toolbar_v3/add_block_toolbar_item.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/simple_table/simple_table.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/simple_table/simple_table_widgets/_simple_table_bottom_sheet_actions.dart';
 import 'package:appflowy/plugins/shared/share/share_button.dart';
 import 'package:appflowy/shared/feature_flags.dart';
+import 'package:appflowy/shared/icon_emoji_picker/flowy_icon_emoji_picker.dart';
+import 'package:appflowy/shared/icon_emoji_picker/icon_picker.dart';
 import 'package:appflowy/shared/text_field/text_filed_with_metric_lines.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/user/presentation/screens/screens.dart';
 import 'package:appflowy/user/presentation/screens/sign_in_screen/widgets/widgets.dart';
 import 'package:appflowy/workspace/application/view/view_ext.dart';
+import 'package:appflowy/workspace/presentation/home/menu/sidebar/favorites/favorite_folder.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/footer/sidebar_footer.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/shared/sidebar_new_page_button.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/shared_widget.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/sidebar_space_header.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/sidebar_space_menu.dart';
+import 'package:appflowy/workspace/presentation/home/menu/sidebar/space/space_icon_popup.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/workspace/_sidebar_workspace_menu.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/workspace/sidebar_workspace.dart';
 import 'package:appflowy/workspace/presentation/home/menu/view/draggable_view_item.dart';
@@ -42,6 +50,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 import 'emoji.dart';
 import 'util.dart';
@@ -446,11 +457,8 @@ extension CommonOperations on WidgetTester {
 
     // open the page after created
     if (openAfterCreated) {
-      await openPage(
-        // if the name is null, use the default name
-        pageName ?? LocaleKeys.menuAppHeader_defaultNewPageName.tr(),
-        layout: layout,
-      );
+      // if the name is null, use empty string
+      await openPage(pageName ?? '', layout: layout);
       await pumpAndSettle();
     }
   }
@@ -595,6 +603,23 @@ extension CommonOperations on WidgetTester {
     await pumpAndSettle();
   }
 
+  Future<void> reorderFavorite({
+    required String fromName,
+    required String toName,
+  }) async {
+    final from = find.descendant(
+          of: find.byType(FavoriteFolder),
+          matching: find.text(fromName),
+        ),
+        to = find.descendant(
+          of: find.byType(FavoriteFolder),
+          matching: find.text(toName),
+        );
+    final distanceY = getCenter(to).dy - getCenter(from).dx;
+    await drag(from, Offset(0, distanceY));
+    await pumpAndSettle(const Duration(seconds: 1));
+  }
+
   // tap the button with [FlowySvgData]
   Future<void> tapButtonWithFlowySvgData(FlowySvgData svg) async {
     final button = find.byWidgetPredicate(
@@ -606,9 +631,9 @@ extension CommonOperations on WidgetTester {
   // update the page icon in the sidebar
   Future<void> updatePageIconInSidebarByName({
     required String name,
-    required String parentName,
+    String? parentName,
     required ViewLayoutPB layout,
-    required String icon,
+    required EmojiIconData icon,
   }) async {
     final iconButton = find.descendant(
       of: findPageName(
@@ -620,7 +645,11 @@ extension CommonOperations on WidgetTester {
           find.byTooltip(LocaleKeys.document_plugins_cover_changeIcon.tr()),
     );
     await tapButton(iconButton);
-    await tapEmoji(icon);
+    if (icon.type == FlowyIconType.emoji) {
+      await tapEmoji(icon.emoji);
+    } else if (icon.type == FlowyIconType.icon) {
+      await tapIcon(icon);
+    }
     await pumpAndSettle();
   }
 
@@ -628,7 +657,7 @@ extension CommonOperations on WidgetTester {
   Future<void> updatePageIconInTitleBarByName({
     required String name,
     required ViewLayoutPB layout,
-    required String icon,
+    required EmojiIconData icon,
   }) async {
     await openPage(
       name,
@@ -640,7 +669,32 @@ extension CommonOperations on WidgetTester {
     );
     await tapButton(title);
     await tapButton(find.byType(EmojiPickerButton));
-    await tapEmoji(icon);
+    if (icon.type == FlowyIconType.emoji) {
+      await tapEmoji(icon.emoji);
+    } else if (icon.type == FlowyIconType.icon) {
+      await tapIcon(icon);
+    } else if (icon.type == FlowyIconType.custom) {
+      await pickImage(icon);
+    }
+    await pumpAndSettle();
+  }
+
+  Future<void> updatePageIconInTitleBarByPasteALink({
+    required String name,
+    required ViewLayoutPB layout,
+    required String iconLink,
+  }) async {
+    await openPage(
+      name,
+      layout: layout,
+    );
+    final title = find.descendant(
+      of: find.byType(ViewTitleBar),
+      matching: find.text(name),
+    );
+    await tapButton(title);
+    await tapButton(find.byType(EmojiPickerButton));
+    await pasteImageLinkAsIcon(iconLink);
     await pumpAndSettle();
   }
 
@@ -774,6 +828,172 @@ extension CommonOperations on WidgetTester {
     );
     await tap(button);
     await pump();
+  }
+
+  Future<void> tapFileUploadHint() async {
+    final finder = find.byWidgetPredicate(
+      (w) =>
+          w is RichText &&
+          w.text.toPlainText().contains(
+                LocaleKeys.document_plugins_file_fileUploadHint.tr(),
+              ),
+    );
+    await tap(finder);
+    await pumpAndSettle(const Duration(seconds: 2));
+  }
+
+  /// Create a new document on mobile
+  Future<void> createNewDocumentOnMobile(String name) async {
+    final createPageButton = find.byKey(
+      BottomNavigationBarItemType.add.valueKey,
+    );
+    await tapButton(createPageButton);
+    expect(find.byType(MobileDocumentScreen), findsOneWidget);
+
+    final title = editor.findDocumentTitle('');
+    expect(title, findsOneWidget);
+    final textField = widget<TextField>(title);
+    expect(textField.focusNode!.hasFocus, isTrue);
+
+    // input new name and press done button
+    await enterText(title, name);
+    await testTextInput.receiveAction(TextInputAction.done);
+    await pumpAndSettle();
+    final newTitle = editor.findDocumentTitle(name);
+    expect(newTitle, findsOneWidget);
+    expect(textField.controller!.text, name);
+  }
+
+  /// Open the plus menu
+  Future<void> openPlusMenuAndClickButton(String buttonName) async {
+    assert(
+      UniversalPlatform.isMobile,
+      'This method is only supported on mobile platforms',
+    );
+
+    final plusMenuButton = find.byKey(addBlockToolbarItemKey);
+    final addMenuItem = find.byType(AddBlockMenu);
+    await tapButton(plusMenuButton);
+    await pumpUntilFound(addMenuItem);
+
+    final toggleHeading1 = find.byWidgetPredicate(
+      (widget) =>
+          widget is TypeOptionMenuItem && widget.value.text == buttonName,
+    );
+    final scrollable = find.ancestor(
+      of: find.byType(TypeOptionGridView),
+      matching: find.byType(Scrollable),
+    );
+    await scrollUntilVisible(
+      toggleHeading1,
+      100,
+      scrollable: scrollable,
+    );
+    await tapButton(toggleHeading1);
+    await pumpUntilNotFound(addMenuItem);
+  }
+
+  /// Click the column menu button in the simple table
+  Future<void> clickColumnMenuButton(int index) async {
+    final columnMenuButton = find.byWidgetPredicate(
+      (w) =>
+          w is SimpleTableMobileReorderButton &&
+          w.index == index &&
+          w.type == SimpleTableMoreActionType.column,
+    );
+    await tapButton(columnMenuButton);
+    await pumpUntilFound(find.byType(SimpleTableCellBottomSheet));
+  }
+
+  /// Click the row menu button in the simple table
+  Future<void> clickRowMenuButton(int index) async {
+    final rowMenuButton = find.byWidgetPredicate(
+      (w) =>
+          w is SimpleTableMobileReorderButton &&
+          w.index == index &&
+          w.type == SimpleTableMoreActionType.row,
+    );
+    await tapButton(rowMenuButton);
+    await pumpUntilFound(find.byType(SimpleTableCellBottomSheet));
+  }
+
+  /// Click the SimpleTableQuickAction
+  Future<void> clickSimpleTableQuickAction(SimpleTableMoreAction action) async {
+    final button = find.byWidgetPredicate(
+      (widget) => widget is SimpleTableQuickAction && widget.type == action,
+    );
+    await tapButton(button);
+  }
+
+  /// Click the SimpleTableContentAction
+  Future<void> clickSimpleTableBoldContentAction() async {
+    final button = find.byType(SimpleTableContentBoldAction);
+    await tapButton(button);
+  }
+
+  /// Cancel the table action menu
+  Future<void> cancelTableActionMenu() async {
+    final finder = find.byType(SimpleTableCellBottomSheet);
+    if (finder.evaluate().isEmpty) {
+      return;
+    }
+
+    await tapAt(Offset.zero);
+    await pumpUntilNotFound(finder);
+  }
+
+  /// load icon list and return the first one
+  Future<EmojiIconData> loadIcon() async {
+    await loadIconGroups();
+    final groups = kIconGroups!;
+    final firstGroup = groups.first;
+    final firstIcon = firstGroup.icons.first;
+    return EmojiIconData.icon(
+      IconsData(
+        firstGroup.name,
+        firstIcon.name,
+        builtInSpaceColors.first,
+      ),
+    );
+  }
+
+  Future<EmojiIconData> prepareImageIcon() async {
+    final imagePath = await rootBundle.load('assets/test/images/sample.jpeg');
+    final tempDirectory = await getTemporaryDirectory();
+    final localImagePath = p.join(tempDirectory.path, 'sample.jpeg');
+    final imageFile = File(localImagePath)
+      ..writeAsBytesSync(imagePath.buffer.asUint8List());
+    return EmojiIconData.custom(imageFile.path);
+  }
+
+  Future<EmojiIconData> prepareSvgIcon() async {
+    final imagePath = await rootBundle.load('assets/test/images/sample.svg');
+    final tempDirectory = await getTemporaryDirectory();
+    final localImagePath = p.join(tempDirectory.path, 'sample.svg');
+    final imageFile = File(localImagePath)
+      ..writeAsBytesSync(imagePath.buffer.asUint8List());
+    return EmojiIconData.custom(imageFile.path);
+  }
+
+  /// create new page and show slash menu
+  Future<void> createPageAndShowSlashMenu(String title) async {
+    await createNewDocumentOnMobile(title);
+    await editor.tapLineOfEditorAt(0);
+    await editor.showSlashMenu();
+  }
+
+  /// create new page and show at menu
+  Future<void> createPageAndShowAtMenu(String title) async {
+    await createNewDocumentOnMobile(title);
+    await editor.tapLineOfEditorAt(0);
+    await editor.showAtMenu();
+  }
+
+  /// create new page and show plus menu
+  Future<void> createPageAndShowPlusMenu(String title) async {
+    await createNewDocumentOnMobile(title);
+    await editor.tapLineOfEditorAt(0);
+    await editor.showPlusMenu();
   }
 }
 

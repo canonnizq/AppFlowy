@@ -9,8 +9,9 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/copy_and_p
 import 'package:appflowy/plugins/document/presentation/editor_plugins/image/custom_image_block_component/unsupport_image_widget.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/image/image_placeholder.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/image/resizeable_image.dart';
+import 'package:appflowy/shared/custom_image_cache_manager.dart';
+import 'package:appflowy/shared/permission/permission_checker.dart';
 import 'package:appflowy/startup/startup.dart';
-import 'package:appflowy/workspace/presentation/home/toast.dart';
 import 'package:appflowy/workspace/presentation/widgets/dialogs.dart';
 import 'package:appflowy/workspace/presentation/widgets/image_viewer/image_provider.dart';
 import 'package:appflowy/workspace/presentation/widgets/image_viewer/interactive_image_viewer.dart';
@@ -19,6 +20,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:saver_gallery/saver_gallery.dart';
 import 'package:string_validator/string_validator.dart';
 import 'package:universal_platform/universal_platform.dart';
 
@@ -81,6 +83,7 @@ Node customImageNode({
 typedef CustomImageBlockComponentMenuBuilder = Widget Function(
   Node node,
   CustomImageBlockComponentState state,
+  ValueNotifier<ResizableImageState> imageStateNotifier,
 );
 
 class CustomImageBlockComponentBuilder extends BlockComponentBuilder {
@@ -149,6 +152,8 @@ class CustomImageBlockComponentState extends State<CustomImageBlockComponent>
   late final editorState = Provider.of<EditorState>(context, listen: false);
 
   final showActionsNotifier = ValueNotifier<bool>(false);
+  final imageStateNotifier =
+      ValueNotifier<ResizableImageState>(ResizableImageState.loading);
 
   bool alwaysShowMenu = false;
 
@@ -185,6 +190,7 @@ class CustomImageBlockComponentState extends State<CustomImageBlockComponent>
         editable: editorState.editable,
         alignment: alignment,
         type: imageType,
+        onStateChange: (state) => imageStateNotifier.value = state,
         onDoubleTap: () => showDialog(
           context: context,
           builder: (_) => InteractiveImageViewer(
@@ -248,19 +254,21 @@ class CustomImageBlockComponentState extends State<CustomImageBlockComponent>
           child: ValueListenableBuilder<bool>(
             valueListenable: showActionsNotifier,
             builder: (_, value, child) {
-              final url = node.attributes[CustomImageBlockKeys.url];
               return Stack(
                 children: [
-                  BlockSelectionContainer(
-                    node: node,
-                    delegate: this,
-                    listenable: editorState.selectionNotifier,
-                    cursorColor: editorState.editorStyle.cursorColor,
-                    selectionColor: editorState.editorStyle.selectionColor,
-                    child: child!,
-                  ),
-                  if (value && url.isNotEmpty == true)
-                    widget.menuBuilder!(widget.node, this),
+                  editorState.editable
+                      ? BlockSelectionContainer(
+                          node: node,
+                          delegate: this,
+                          listenable: editorState.selectionNotifier,
+                          cursorColor: editorState.editorStyle.cursorColor,
+                          selectionColor:
+                              editorState.editorStyle.selectionColor,
+                          child: child!,
+                        )
+                      : child!,
+                  if (value)
+                    widget.menuBuilder!(widget.node, this, imageStateNotifier),
                 ],
               );
             },
@@ -382,11 +390,8 @@ class CustomImageBlockComponentState extends State<CustomImageBlockComponent>
         ),
         onTap: () async {
           context.pop();
-          showSnackBarMessage(
-            context,
-            LocaleKeys.document_plugins_image_copiedToPasteBoard.tr(),
-          );
-          await getIt<ClipboardService>().setPlainText(url);
+          // save the image to the photo library
+          await _saveImageToGallery(url);
         },
       ),
     ];
@@ -406,5 +411,29 @@ class CustomImageBlockComponentState extends State<CustomImageBlockComponent>
     }
 
     return true;
+  }
+
+  Future<void> _saveImageToGallery(String url) async {
+    final permission = await PermissionChecker.checkPhotoPermission(context);
+    if (!permission) {
+      return;
+    }
+
+    final imageFile = await CustomImageCacheManager().getSingleFile(url);
+    if (imageFile.existsSync()) {
+      final result = await SaverGallery.saveImage(
+        imageFile.readAsBytesSync(),
+        fileName: imageFile.basename,
+        skipIfExists: false,
+      );
+      if (mounted) {
+        showToastNotification(
+          context,
+          message: result.isSuccess
+              ? LocaleKeys.document_imageBlock_successToAddImageToGallery.tr()
+              : LocaleKeys.document_imageBlock_failedToAddImageToGallery.tr(),
+        );
+      }
+    }
   }
 }

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 enum PickerTabType {
   emoji,
-  icon;
+  icon,
+  custom;
 
   String get tr {
     switch (this) {
@@ -11,6 +12,18 @@ enum PickerTabType {
         return 'Emojis';
       case PickerTabType.icon:
         return 'Icons';
+      case PickerTabType.custom:
+        return 'Upload';
+    }
+  }
+}
+
+extension StringToPickerTabType on String {
+  PickerTabType? toPickerTabType() {
+    try {
+      return PickerTabType.values.byName(this);
+    } on ArgumentError {
+      return null;
     }
   }
 }

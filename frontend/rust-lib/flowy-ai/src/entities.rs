@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use crate::local_ai::local_llm_resource::PendingResource;
 use flowy_ai_pub::cloud::{
-  ChatMessage, LLMModel, RelatedQuestion, RepeatedChatMessage, RepeatedRelatedQuestion,
+  ChatMessage, ChatMessageMetadata, ChatMessageType, LLMModel, OutputContent, OutputLayout,
+  RelatedQuestion, RepeatedChatMessage, RepeatedRelatedQuestion, ResponseFormat,
 };
 use flowy_derive::{ProtoBuf, ProtoBuf_Enum};
 use lib_infra::validator_fn::required_not_empty_str;
@@ -67,8 +68,38 @@ pub struct StreamChatPayloadPB {
   #[pb(index = 5)]
   pub question_stream_port: i64,
 
-  #[pb(index = 6)]
+  #[pb(index = 6, one_of)]
+  pub format: Option<PredefinedFormatPB>,
+
+  #[pb(index = 7)]
   pub metadata: Vec<ChatMessageMetaPB>,
+}
+
+#[derive(Default, Debug)]
+pub struct StreamMessageParams<'a> {
+  pub chat_id: &'a str,
+  pub message: &'a str,
+  pub message_type: ChatMessageType,
+  pub answer_stream_port: i64,
+  pub question_stream_port: i64,
+  pub format: Option<PredefinedFormatPB>,
+  pub metadata: Vec<ChatMessageMetadata>,
+}
+
+#[derive(Default, ProtoBuf, Validate, Clone, Debug)]
+pub struct RegenerateResponsePB {
+  #[pb(index = 1)]
+  #[validate(custom(function = "required_not_empty_str"))]
+  pub chat_id: String,
+
+  #[pb(index = 2)]
+  pub answer_message_id: i64,
+
+  #[pb(index = 3)]
+  pub answer_stream_port: i64,
+
+  #[pb(index = 4, one_of)]
+  pub format: Option<PredefinedFormatPB>,
 }
 
 #[derive(Default, ProtoBuf, Validate, Clone, Debug)]
@@ -83,16 +114,16 @@ pub struct ChatMessageMetaPB {
   pub data: String,
 
   #[pb(index = 4)]
-  pub data_type: ChatMessageMetaTypePB,
+  pub loader_type: ContextLoaderTypePB,
 
   #[pb(index = 5)]
   pub source: String,
 }
 
 #[derive(Debug, Default, Clone, ProtoBuf_Enum, PartialEq, Eq, Copy)]
-pub enum ChatMessageMetaTypePB {
+pub enum ContextLoaderTypePB {
   #[default]
-  UnknownMetaType = 0,
+  UnknownLoaderType = 0,
   Txt = 1,
   Markdown = 2,
   PDF = 3,
@@ -149,6 +180,12 @@ pub struct ChatMessageListPB {
   /// If the total number of messages is 0, then the total number of messages is unknown.
   #[pb(index = 3)]
   pub total: i64,
+}
+
+#[derive(Default, ProtoBuf, Validate, Clone, Debug)]
+pub struct ModelConfigPB {
+  #[pb(index = 1)]
+  pub models: String,
 }
 
 impl From<RepeatedChatMessage> for ChatMessageListPB {
@@ -328,8 +365,17 @@ pub struct CompleteTextPB {
   #[pb(index = 2)]
   pub completion_type: CompletionTypePB,
 
-  #[pb(index = 3)]
+  #[pb(index = 3, one_of)]
+  pub format: Option<PredefinedFormatPB>,
+
+  #[pb(index = 4)]
   pub stream_port: i64,
+
+  #[pb(index = 5)]
+  pub object_id: String,
+
+  #[pb(index = 6)]
+  pub rag_ids: Vec<String>,
 }
 
 #[derive(Default, ProtoBuf, Clone, Debug)]
@@ -340,13 +386,14 @@ pub struct CompleteTextTaskPB {
 
 #[derive(Clone, Debug, ProtoBuf_Enum, Default)]
 pub enum CompletionTypePB {
-  UnknownCompletionType = 0,
   #[default]
-  ImproveWriting = 1,
-  SpellingAndGrammar = 2,
-  MakeShorter = 3,
-  MakeLonger = 4,
-  ContinueWriting = 5,
+  UserQuestion = 0,
+  ExplainSelected = 1,
+  ContinueWriting = 2,
+  SpellingAndGrammar = 3,
+  ImproveWriting = 4,
+  MakeShorter = 5,
+  MakeLonger = 6,
 }
 
 #[derive(Default, ProtoBuf, Clone, Debug)]
@@ -524,4 +571,68 @@ pub struct CreateChatContextPB {
   #[pb(index = 4)]
   #[validate(custom(function = "required_not_empty_str"))]
   pub chat_id: String,
+}
+
+#[derive(Default, ProtoBuf, Clone, Debug)]
+pub struct ChatSettingsPB {
+  #[pb(index = 1)]
+  pub rag_ids: Vec<String>,
+}
+
+#[derive(Default, ProtoBuf, Clone, Debug, Validate)]
+pub struct UpdateChatSettingsPB {
+  #[pb(index = 1)]
+  #[validate(nested)]
+  pub chat_id: ChatId,
+
+  #[pb(index = 2)]
+  pub rag_ids: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone, ProtoBuf)]
+pub struct PredefinedFormatPB {
+  #[pb(index = 1)]
+  pub image_format: ResponseImageFormatPB,
+
+  #[pb(index = 2, one_of)]
+  pub text_format: Option<ResponseTextFormatPB>,
+}
+
+#[derive(Debug, Default, Clone, ProtoBuf_Enum)]
+pub enum ResponseImageFormatPB {
+  #[default]
+  TextOnly = 0,
+  ImageOnly = 1,
+  TextAndImage = 2,
+}
+
+#[derive(Debug, Default, Clone, ProtoBuf_Enum)]
+pub enum ResponseTextFormatPB {
+  #[default]
+  Paragraph = 0,
+  BulletedList = 1,
+  NumberedList = 2,
+  Table = 3,
+}
+
+impl From<PredefinedFormatPB> for ResponseFormat {
+  fn from(value: PredefinedFormatPB) -> Self {
+    Self {
+      output_layout: match value.text_format {
+        Some(format) => match format {
+          ResponseTextFormatPB::Paragraph => OutputLayout::Paragraph,
+          ResponseTextFormatPB::BulletedList => OutputLayout::BulletList,
+          ResponseTextFormatPB::NumberedList => OutputLayout::NumberedList,
+          ResponseTextFormatPB::Table => OutputLayout::SimpleTable,
+        },
+        None => OutputLayout::Paragraph,
+      },
+      output_content: match value.image_format {
+        ResponseImageFormatPB::TextOnly => OutputContent::TEXT,
+        ResponseImageFormatPB::ImageOnly => OutputContent::IMAGE,
+        ResponseImageFormatPB::TextAndImage => OutputContent::RichTextImage,
+      },
+      output_content_metadata: None,
+    }
+  }
 }

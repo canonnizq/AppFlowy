@@ -8,7 +8,8 @@ use client_api::entity::billing_dto::{
   SubscriptionPlanDetail, WorkspaceSubscriptionStatus, WorkspaceUsageAndLimit,
 };
 use client_api::entity::workspace_dto::{
-  CreateWorkspaceParam, PatchWorkspaceParam, WorkspaceMemberChangeset, WorkspaceMemberInvitation,
+  CreateWorkspaceParam, PatchWorkspaceParam, QueryWorkspaceParam, WorkspaceMemberChangeset,
+  WorkspaceMemberInvitation,
 };
 use client_api::entity::{
   AFRole, AFWorkspace, AFWorkspaceInvitation, AFWorkspaceSettings, AFWorkspaceSettingsChange,
@@ -17,7 +18,7 @@ use client_api::entity::{
 use client_api::entity::{QueryCollab, QueryCollabParams};
 use client_api::{Client, ClientConfiguration};
 use collab_entity::{CollabObject, CollabType};
-use tracing::instrument;
+use tracing::{instrument, trace};
 
 use flowy_error::{ErrorCode, FlowyError, FlowyResult};
 use flowy_user_pub::cloud::{UserCloudService, UserCollabParams, UserUpdate, UserUpdateReceiver};
@@ -198,7 +199,12 @@ where
 
   async fn get_all_workspace(&self, _uid: i64) -> Result<Vec<UserWorkspace>, FlowyError> {
     let try_get_client = self.server.try_get_client();
-    let workspaces = try_get_client?.get_workspaces().await?;
+    let workspaces = try_get_client?
+      .get_workspaces_opt(QueryWorkspaceParam {
+        include_member_count: Some(true),
+        include_role: Some(true),
+      })
+      .await?;
     to_user_workspaces(workspaces)
   }
 
@@ -259,6 +265,8 @@ where
         vec![WorkspaceMemberInvitation {
           email: invitee_email,
           role: to_af_role(role),
+          skip_email_send: false,
+          wait_email_send: false,
         }],
       )
       .await?;
@@ -578,6 +586,7 @@ where
     workspace_id: &str,
     workspace_settings: AFWorkspaceSettingsChange,
   ) -> Result<AFWorkspaceSettings, FlowyError> {
+    trace!("Sync workspace settings: {:?}", workspace_settings);
     let workspace_id = workspace_id.to_string();
     let try_get_client = self.server.try_get_client();
     let client = try_get_client?;
@@ -658,6 +667,8 @@ fn to_user_workspace(af_workspace: AFWorkspace) -> UserWorkspace {
     created_at: af_workspace.created_at,
     workspace_database_id: af_workspace.database_storage_id.to_string(),
     icon: af_workspace.icon,
+    member_count: af_workspace.member_count.unwrap_or(0),
+    role: af_workspace.role.map(|r| r.into()),
   }
 }
 

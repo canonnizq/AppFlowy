@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 use flowy_error::{ErrorCode, FlowyError};
 use flowy_folder_pub::cloud::{
-  Folder, FolderCloudService, FolderCollabParams, FolderData, FolderSnapshot, Workspace,
-  WorkspaceRecord,
+  Folder, FolderCloudService, FolderCollabParams, FolderData, FolderSnapshot, FullSyncCollabParams,
+  Workspace, WorkspaceRecord,
 };
 use flowy_folder_pub::entities::PublishPayload;
 use lib_infra::async_trait::async_trait;
@@ -152,6 +152,25 @@ where
     Ok(doc_state)
   }
 
+  async fn full_sync_collab_object(
+    &self,
+    workspace_id: &str,
+    params: FullSyncCollabParams,
+  ) -> Result<(), FlowyError> {
+    let workspace_id = workspace_id.to_string();
+    let try_get_client = self.inner.try_get_client();
+    try_get_client?
+      .collab_full_sync(
+        &workspace_id,
+        &params.object_id,
+        params.collab_type,
+        params.encoded_collab.doc_state.to_vec(),
+        params.encoded_collab.state_vector.to_vec(),
+      )
+      .await?;
+    Ok(())
+  }
+
   async fn batch_create_folder_collab_objects(
     &self,
     workspace_id: &str,
@@ -203,6 +222,8 @@ where
             metadata: meta.metadata,
           },
           data,
+          comments_enabled: true,
+          duplicate_enabled: true,
         })
       })
       .collect::<Vec<_>>();
@@ -258,6 +279,8 @@ where
         &[PatchPublishedCollab {
           view_id,
           publish_name: Some(new_name),
+          comments_enabled: Some(true),
+          duplicate_enabled: Some(true),
         }],
       )
       .await
@@ -268,13 +291,12 @@ where
   async fn set_publish_namespace(
     &self,
     workspace_id: &str,
-    new_namespace: &str,
+    new_namespace: String,
   ) -> Result<(), FlowyError> {
     let workspace_id = workspace_id.to_string();
-    let namespace = new_namespace.to_string();
     let try_get_client = self.inner.try_get_client();
     try_get_client?
-      .set_workspace_publish_namespace(&workspace_id, &namespace)
+      .set_workspace_publish_namespace(&workspace_id, new_namespace)
       .await?;
     Ok(())
   }
